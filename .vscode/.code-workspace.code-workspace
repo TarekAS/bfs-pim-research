@@ -1,0 +1,15 @@
+{
+	"folders": [
+		{
+			"path": "/home/tarek/workspace/host"
+		},
+		{
+			"path": "/home/tarek/workspace/dpu"
+		},
+		{
+			"name": "workspace",
+			"path": "/home/tarek/workspace"
+		}
+	],
+	"settings": {}
+}
