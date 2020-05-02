@@ -1,0 +1,33 @@
+Load COO matrix from .mtx file.
+Convert COO matrix to CSR Matrix.
+Split the rowPtrs (and associated colIdxs) into d DPUs.
+
+Populate MRAM
+Loop:
+  Launch DPUs
+  Collect the "nextFrontier" from each DPU
+  Combine the "nextFrontiers" into new "currentFrontier"?
+  If currentFrontier is 0, break.
+  Broadcast to all DPUs:
+    new currentFrontier
+    currentLevel
+
+Get the nodeLevel from each DPU
+Print nodeLevel
+
+
+DPU: 
+----
+currentFrontier := V bits
+visited := V/d bits
+nextFrontier := V/d bits
+
+visited[] |= nextFrontier
+Take our part of the nextFrontier as the currentFrontier
+if currentFrontier[] == 1
+  nodeLevel[] = currentLevel
+nextFrontier[] = 0
+
+for each unvisited node in our share of the currentFrontier
+  if any of the neighbors are in the global currentFrontier
+    add node to nextFrontier (critical section)
