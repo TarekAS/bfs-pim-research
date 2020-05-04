@@ -19,9 +19,10 @@ __host uint32_t numNeighbors;  // Number of neighbors for this DPU.
 __host uint32_t currentLevel;  // Current level in the BFS. Used to update the nodeLevel bitarray.
 __host uint32_t totalChunks;   // Number of nodeChunks (i.e. length of nextFrontier).
 __host uint32_t numChunks;     // Number of nodeChunks for this DPU (i.e. length of currFrontier). Should be divisible by NR_TASKLETS.
+
 __host uint32_t nodeChunkFrom; // [nodeChunkFrom, nodeChunkTo[ is the range nodeChunks in nextFrontier for this DPU.
 __host uint32_t nodeChunkTo;
-__host uint32_t origin;
+__host uint32_t origin; // nodePtrs[0] of this DPU
 
 __host __mram_ptr uint32_t *nodePtrs;        // DPU's share of nodePtrs.
 __host __mram_ptr uint32_t *neighbors;       // DPU's share of neighbors.
@@ -36,72 +37,69 @@ __host __mram_ptr uint32_t *nodeLevels;      // The output of the BFS.
 
 
 BARRIER_INIT(nf_barrier, NR_TASKLETS);
-MUTEX_INIT(nf_mutex);
 
 int main() {
 
-  uint32_t chunksPerTasklet = totalChunks / NR_TASKLETS;
-  uint32_t idx = chunksPerTasklet * me();
-  uint32_t lim = idx + chunksPerTasklet;
+  // (void) perfcounter_config(COUNT_CYCLES, true);
 
-  // For each chunk of the nextFrontier.
-  for (uint32_t c = idx; c < lim; ++c) {
-    uint32_t f = nextFrontier[c];
+  // For each chunk of the currentFrontier belonging to this DPU. (Nested loop prevents false sharing)
+  for (uint32_t i = me() * 2; i < numChunks; i += NR_TASKLETS * 2)
+    for (uint32_t j = 0; j < 2; ++j) {
+      uint32_t c = i + j; // Index of chunk.
+      uint32_t cf = currFrontier[nodeChunkFrom + c];
 
-    nextFrontier[c] = 0; // Clear chunk.
-    visited[c] |= f;     // Update visited nodes.
-
-    // If chunk belongs to this DPU.
-    if (c >= nodeChunkFrom && c < nodeChunkTo) {
-      uint32_t ridx = c - nodeChunkFrom;  // Relative index of nextFrontier in the currFrontier.
-      currFrontier[ridx] = f;  // Set currFrontier.
+      nextFrontier[c] = 0;
+      visited[c] |= cf;
 
       // For each (set) node in currFrontier, update its nodeLevel to the currentLevel.
       for (uint32_t b = 0; b < 32; ++b) 
-        if(f & 1 << b % 32)
-          nodeLevels[ridx * 32 + b] = currentLevel;
+        if(cf & 1 << b % 32)
+          nodeLevels[c * 32 + b] = currentLevel;
     }
-    
-  }
+
   barrier_wait(&nf_barrier);
 
-  // For each chunk of the currFrontier. TODO: loop over own chunks only.
-  for (uint32_t c = me(); c < numChunks; c += NR_TASKLETS) {
-    uint32_t f = currFrontier[c];
-    uint32_t v = visited[c];
-    uint32_t cf = f & !v; 
-    
-    // For each unvisited node in the chunk.
-    for (uint32_t b = 0; b < 31; ++b)
-      if(cf & 1 << b % 32) {
+  // For each chunk of the currentFrontier belonging to this DPU. (Nested loop prevents false sharing)
+  for (uint32_t i = me() * 2; i < numChunks; i += NR_TASKLETS * 2)
+    for (uint32_t j = 0; j < 2; ++j) {
+      uint32_t c = i + j; // Index of chunk.
+      uint32_t cf = currFrontier[nodeChunkFrom + c] & !visited; // Unvisited nodes in currentFrontier.
 
-        uint32_t node = c * 32 + b; 
-        uint32_t offset = 1 << node % 32;
+      // if (me() == 0)
+      //   printf("(%u, %u) ", currFrontier[nodeChunkFrom + c], visited[c]);
 
-        // Get nodePtrs of this node.
-        uint32_t from = nodePtrs[node] - origin;
-        uint32_t to;
-        if (node < numNodes - 1)
-          to = nodePtrs[node + 1] - origin;
-        else
-          to = numNeighbors;
+      // For each unvisited node in the chunk.
+      for (uint32_t b = 0; b < 32; ++b)
+        if(cf & 1 << b % 32) {
+          uint32_t node = c * 32 + b;
+          uint32_t offset = 1 << node % 32;
 
-        // For each neighbor.
-        for (uint32_t n = from; n < to; ++n) {
-          uint32_t neighbor = neighbors[n];
-          uint32_t ncf = currFrontier[neighbor / 32];
+          // Get nodePtrs of this node.
+          uint32_t from = nodePtrs[node] - origin;
+          uint32_t to;
+          if (node < numNodes - 1)
+            to = nodePtrs[node + 1] - origin;
+          else
+            to = numNeighbors;
+          
+          // For each neighbor.
+          for (uint32_t n = from; n < to; ++n) {
+            uint32_t neighbor = neighbors[n];
+            uint32_t ncf = currFrontier[neighbor / 32]; // neighbor's currFrontier chunk.
 
-          // If neighbor is in currFrontier.
-          if (ncf & 1 << b % 32) {
-
-              // Add node to nextFrontier.
-              mutex_lock(nf_mutex);
-              nextFrontier[c] |= offset; // TODO: relative index for nf chunk.
-              mutex_unlock(nf_mutex);
-  
+            // If any neighbor is in currFrontier, add node to nextFrontier.
+            if (ncf & 1 << b % 32) {
+              nextFrontier[c] |= offset;
               break;
+            }
           }
         }
       }
-  }
+
+  // if (me() == 0)
+  //   printf("\n");
+
+
+  // perfcounter_t run_time = perfcounter_get();
+  // printf("%lu ", run_time);
 }

@@ -292,15 +292,15 @@ int main() {
     dpu_insert_to_mram_uint32_array(dpu, "neighbors", neighbors, numNeighbors);
     dpu_insert_to_mram_uint32_array(dpu, "nodeLevels", 0, numNodes);
     dpu_insert_to_mram_uint32_array(dpu, "visited", 0, numChunks);
-    dpu_insert_to_mram_uint32_array(dpu, "nextFrontier", nextFrontier,
-                                    numChunks);
-    dpu_insert_to_mram_uint32_array(dpu, "currFrontier", 0, totalChunks);
+    dpu_insert_to_mram_uint32_array(dpu, "nextFrontier", 0, numChunks);
+
+    uint32_t *nf = i == 0 ? nextFrontier : 0; // dpu 0 gets root node.
+    dpu_insert_to_mram_uint32_array(dpu, "currFrontier", nf, totalChunks);
   }
 
   // BFS.
-  uint32_t *nf = calloc(totalChunks, sizeof(uint32_t));
-  uint32_t currentLevel = 0;
   uint32_t done = true;
+  uint32_t currentLevel = 0;
   nextFrontier[0] = 0;
 
   while (true) {
@@ -312,11 +312,11 @@ int main() {
     // Concatenate all nextFrontiers.
     uint32_t writeIdx;
     _DPU_FOREACH_I(set, dpu, i) {
-      uint32_t nfNumChunks;
-      // dpu_copy_from_uint32(dpu, "nfNumChunks", &nfNumChunks); // TODO
-      dpu_copy_from_mram_uint32_array(dpu, "nextFrontier", &nf[writeIdx],
-                                      nfNumChunks);
-      writeIdx += nfNumChunks;
+      uint32_t numChunks;
+      dpu_copy_from_uint32(dpu, "numChunks", &numChunks);
+      dpu_copy_from_mram_uint32_array(dpu, "nextFrontier",
+                                      &nextFrontier[writeIdx], numChunks);
+      writeIdx += numChunks;
 
       // Get DPU logs.
       // PRINT_INFO("DPU %d:", i);
@@ -325,27 +325,22 @@ int main() {
 
     // Check if done.
     for (uint32_t c = 0; c < totalChunks; ++c)
-      if (nf[c] != 0) {
+      if (nextFrontier[c] != 0) {
         done = false;
         break;
       }
-
     if (done)
       break;
 
     done = true;
     ++currentLevel;
 
-    // Update currentLevel and nextFrontier of DPUs.
+    // Update currentLevel and currentFrontier of DPUs.
     dpu_copy_to_uint32(set, "currentLevel", currentLevel);
     _DPU_FOREACH_I(set, dpu, i) {
-      dpu_copy_to_mram_uint32_array(dpu, "nextFrontier", nextFrontier,
+      dpu_copy_to_mram_uint32_array(dpu, "currFrontier", nextFrontier,
                                     totalChunks);
     }
-
-    // Clear nextFrontier. TODO: Do i need this?
-    // for (uint32_t c = 0; c < totalChunks; ++c)
-    //   nextFrontier[c] = 0;
   }
 
   // Get nodeLevels from each DPU.
@@ -360,9 +355,9 @@ int main() {
   }
 
   // Output.
-  PRINT_INFO("Output:");
-  for (uint32_t node = 0; node < csr.numRows; ++node)
-    printf("%u\n", nodeLevels[node]);
+  // PRINT_INFO("Output:");
+  // for (uint32_t node = 0; node < csr.numRows; ++node)
+  //   printf("%u\n", nodeLevels[node]);
 
   // Free resources.
   PRINT_INFO("Freeing resources");
@@ -372,6 +367,5 @@ int main() {
   free(chunksPerDPU);
   free(node_partitions);
   free(nextFrontier);
-  free(nf_dpu);
   free(nodeLevels);
 }
