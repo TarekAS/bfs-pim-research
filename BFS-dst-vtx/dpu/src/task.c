@@ -53,7 +53,7 @@ int main() {
 
       // For each (set) node in currFrontier, update its nodeLevel to the currentLevel.
       for (uint32_t b = 0; b < 32; ++b) 
-        if(cf & 1 << b % 32)
+        if(cf & 1 << (b % 32))
           nodeLevels[c * 32 + b] = currentLevel;
     }
 
@@ -63,16 +63,13 @@ int main() {
   for (uint32_t i = me() * 2; i < numChunks; i += NR_TASKLETS * 2)
     for (uint32_t j = 0; j < 2; ++j) {
       uint32_t c = i + j; // Index of chunk.
-      uint32_t cf = currFrontier[nodeChunkFrom + c] & !visited; // Unvisited nodes in currentFrontier.
-
-      // if (me() == 0)
-      //   printf("(%u, %u) ", currFrontier[nodeChunkFrom + c], visited[c]);
+      uint32_t cf = !visited[c]; // Unvisited nodes in currentFrontier.
 
       // For each unvisited node in the chunk.
       for (uint32_t b = 0; b < 32; ++b)
-        if(cf & 1 << b % 32) {
+        if(cf & (1 << (b % 32))) {
           uint32_t node = c * 32 + b;
-          uint32_t offset = 1 << node % 32;
+          uint32_t offset = 1 << (node % 32); // TODO: check performance based on scope.
 
           // Get nodePtrs of this node.
           uint32_t from = nodePtrs[node] - origin;
@@ -88,17 +85,13 @@ int main() {
             uint32_t ncf = currFrontier[neighbor / 32]; // neighbor's currFrontier chunk.
 
             // If any neighbor is in currFrontier, add node to nextFrontier.
-            if (ncf & 1 << b % 32) {
+            if (ncf & (1 << (neighbor % 32))) {
               nextFrontier[c] |= offset;
               break;
             }
           }
         }
       }
-
-  // if (me() == 0)
-  //   printf("\n");
-
 
   // perfcounter_t run_time = perfcounter_get();
   // printf("%lu ", run_time);
