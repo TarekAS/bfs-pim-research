@@ -293,9 +293,8 @@ int main() {
     dpu_insert_to_mram_uint32_array(dpu, "nodeLevels", 0, numNodes);
     dpu_insert_to_mram_uint32_array(dpu, "visited", 0, numChunks);
     dpu_insert_to_mram_uint32_array(dpu, "nextFrontier", 0, numChunks);
-
-    uint32_t *nf = i == 0 ? nextFrontier : 0; // dpu 0 gets root node.
-    dpu_insert_to_mram_uint32_array(dpu, "currFrontier", nf, totalChunks);
+    dpu_insert_to_mram_uint32_array(dpu, "currFrontier", nextFrontier,
+                                    totalChunks);
   }
 
   // BFS.
@@ -310,7 +309,7 @@ int main() {
     DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
     // Concatenate all nextFrontiers.
-    uint32_t writeIdx;
+    uint32_t writeIdx = 0;
     _DPU_FOREACH_I(set, dpu, i) {
       uint32_t numChunks;
       dpu_copy_from_uint32(dpu, "numChunks", &numChunks);
@@ -319,7 +318,7 @@ int main() {
       writeIdx += numChunks;
 
       // Get DPU logs.
-      // PRINT_INFO("DPU %d:", i);
+      // PRINT_INFO("DPU %d", i);
       // DPU_ASSERT(dpu_log_read(dpu, stdout));
     }
 
@@ -345,7 +344,7 @@ int main() {
 
   // Get nodeLevels from each DPU.
   uint32_t *nodeLevels = malloc(csr.numRows * sizeof(uint32_t));
-  uint32_t writeIdx;
+  uint32_t writeIdx = 0;
   _DPU_FOREACH_I(set, dpu, i) {
     uint32_t numNodes;
     dpu_copy_from_uint32(dpu, "numNodes", &numNodes);
@@ -355,9 +354,9 @@ int main() {
   }
 
   // Output.
-  // PRINT_INFO("Output:");
-  // for (uint32_t node = 0; node < csr.numRows; ++node)
-  //   printf("%u\n", nodeLevels[node]);
+  PRINT_INFO("Output:");
+  for (uint32_t node = 0; node < csr.numRows; ++node)
+    printf("nodeLevels[%u]=%u\n", node, nodeLevels[node]);
 
   // Free resources.
   PRINT_INFO("Freeing resources");

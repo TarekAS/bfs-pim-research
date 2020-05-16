@@ -19,7 +19,7 @@ Print nodeLevel
 DPU: 
 ----
 currentFrontier := V bits
-visited := V/d bits
+visited := V bits
 nextFrontier := V/d bits
 
 visited[] |= nextFrontier
@@ -28,6 +28,37 @@ if currentFrontier[] == 1
   nodeLevel[] = currentLevel
 nextFrontier[] = 0
 
-for each unvisited node in our share of the currentFrontier
+for each unvisited node in visited array of our share of nodes
   if any of the neighbors are in the global currentFrontier
-    add node to nextFrontier (critical section)
+    add node to nextFrontier
+
+
+currentLevel == 0
+  src-vtcx
+    nodeLevel=0 for node=0
+    nodeLevel=1 for node=[1, 614], 69828
+    nodeLevel=2 for node=617, 636
+
+    
+  dst-vtx
+    nodeLevel=0 for node=0
+    nodeLevel=1 for node=[1, 614], 69828
+    nodeLevel=2 for node=617
+      !! nodeLevel=0 for node=636
+
+
+
+for each unvisited node in visited array of our share of nodes
+  if any of the neighbors are in the global currentFrontier
+
+
+node=634    i=0 me=9 c=19 b=26
+
+nodeLevels[634] != 2
+-> nodeLevels[634] == 0
+-> was never set
+-> during currentLevel == 2
+  -> cf=? <=>
+  
+11111111111111111111111110000000
+00010000000000000000000000000000

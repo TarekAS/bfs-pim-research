@@ -356,7 +356,7 @@ int main() {
   // Output.
   PRINT_INFO("Output:");
   for (uint32_t node = 0; node < csr.numRows; ++node)
-    printf("%u\n", nodeLevels[node]);
+    printf("nodeLevels[%u]=%u\n", node, nodeLevels[node]);
 
   // Free resources.
   PRINT_INFO("Freeing resources");
