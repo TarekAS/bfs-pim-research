@@ -23,12 +23,12 @@ __host uint32_t nodeChunkFrom; // [nodeChunkFrom, nodeChunkTo[ is the range node
 __host uint32_t nodeChunkTo;
 __host uint32_t origin;
 
-__host __mram_ptr uint32_t *src_node_ptrs; // DPU's share of src_node_ptrs.
-__host __mram_ptr uint32_t *neighbors;     // DPU's share of neighbors.
-__host __mram_ptr uint32_t *nextFrontier;  // Nodes that are in the next frontier.
-__host __mram_ptr uint32_t *currFrontier;  // Nodes that are in the current frontier.
-__host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
-__host __mram_ptr uint32_t *nodeLevels;    // The output of the BFS.
+__host __mram_ptr uint32_t *nodePtrs;     // DPU's share of nodePtrs.
+__host __mram_ptr uint32_t *neighbors;    // DPU's share of neighbors.
+__host __mram_ptr uint32_t *nextFrontier; // Nodes that are in the next frontier.
+__host __mram_ptr uint32_t *currFrontier; // Nodes that are in the current frontier.
+__host __mram_ptr uint32_t *visited;      // Nodes that are already visited.
+__host __mram_ptr uint32_t *nodeLevels;   // The output of the BFS.
 
 #ifndef NR_TASKLETS
 #define NR_TASKLETS 16

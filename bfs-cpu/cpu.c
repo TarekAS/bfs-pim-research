@@ -5,13 +5,13 @@
 #include <stdlib.h>
 #include <string.h>
 #define SIZE 100000000
-#define PRINT_ERROR(fmt, ...)                                                  \
+#define PRINT_ERROR(fmt, ...) \
   fprintf(stderr, "\033[0;31mERROR:\033[0m   " fmt "\n", ##__VA_ARGS__)
-#define PRINT_WARNING(fmt, ...)                                                \
+#define PRINT_WARNING(fmt, ...) \
   fprintf(stderr, "\033[0;35mWARNING:\033[0m " fmt "\n", ##__VA_ARGS__)
-#define PRINT_INFO(fmt, ...)                                                   \
+#define PRINT_INFO(fmt, ...) \
   fprintf(stderr, "\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
-#define PRINT_STATUS(status)                                                   \
+#define PRINT_STATUS(status) \
   fprintf(stderr, "Status: %s\n", dpu_api_status_to_string(status))
 
 struct COOMatrix {
@@ -32,91 +32,98 @@ struct CSRMatrix {
 
 uint32_t *nodeLevels;
 
-struct COOMatrix readCOOMatrix(const char *fileName) {
+// Reads a coo-formated file into memory.
+struct COOMatrix read_coo_matrix(char *file) {
 
-  struct COOMatrix cooMatrix;
+  PRINT_INFO("Loading COO-formated graph from %s.", file);
 
-  // Initialize fields
-  FILE *fp = fopen(fileName, "r");
-  fscanf(fp, "%u", &cooMatrix.numRows);
-  if (cooMatrix.numRows % 2 == 1) {
-    PRINT_WARNING("Reading matrix %s: number of rows must be even. Padding "
-                  "with an extra row.",
-                  fileName);
-    cooMatrix.numRows++;
+  struct COOMatrix coo;
+
+  // Initialize fields.
+  FILE *fp = fopen(file, "r");
+  fscanf(fp, "%u", &coo.numRows);
+  fscanf(fp, "%u", &coo.numCols);
+  fscanf(fp, "%u", &coo.numNonzeros);
+
+  if (coo.numRows % 2 == 1) {
+    PRINT_WARNING("Number of rows must be even. Padding with an extra row.");
+    coo.numRows++;
   }
-  fscanf(fp, "%u", &cooMatrix.numCols);
-  fscanf(fp, "%u", &cooMatrix.numNonzeros);
-  cooMatrix.rowIdxs = malloc(cooMatrix.numNonzeros * sizeof(uint32_t));
-  cooMatrix.colIdxs = malloc(cooMatrix.numNonzeros * sizeof(uint32_t));
+  if (coo.numCols % 2 == 1) {
+    PRINT_WARNING("Number of columns must be even. Padding with an extra column.");
+    coo.numCols++;
+  }
 
-  PRINT_INFO("Reading matrix %s: %u rows, %u columns, %u nonzeros", fileName,
-             cooMatrix.numRows, cooMatrix.numCols, cooMatrix.numNonzeros);
+  coo.rowIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
+  coo.colIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
 
-  // Read the nonzeros
-  for (uint32_t i = 0; i < cooMatrix.numNonzeros; ++i) {
+  PRINT_INFO("Reading COO-formated matrix - %u rows, %u columns, %u nonzeros.", coo.numRows, coo.numCols, coo.numNonzeros);
+
+  // Read nonzeros.
+  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
     uint32_t rowIdx;
-    fscanf(fp, "%u", &rowIdx);
-    cooMatrix.rowIdxs[i] = rowIdx;
     uint32_t colIdx;
+    fscanf(fp, "%u", &rowIdx);
     fscanf(fp, "%u", &colIdx);
-    cooMatrix.colIdxs[i] = colIdx;
+    coo.rowIdxs[i] = rowIdx;
+    coo.colIdxs[i] = colIdx;
   }
 
-  return cooMatrix;
+  return coo;
 }
 
-struct CSRMatrix coo2csr(struct COOMatrix cooMatrix) {
+// Converts COO matrix to CSR format.
+struct CSRMatrix coo_to_csr(struct COOMatrix coo) {
 
-  struct CSRMatrix csrMatrix;
+  struct CSRMatrix csr;
 
   // Initialize fields
-  csrMatrix.numRows = cooMatrix.numRows;
-  csrMatrix.numCols = cooMatrix.numCols;
-  csrMatrix.numNonzeros = cooMatrix.numNonzeros;
-  csrMatrix.rowPtrs = malloc((csrMatrix.numRows + 1) * sizeof(uint32_t));
-  csrMatrix.colIdxs = malloc(csrMatrix.numNonzeros * sizeof(uint32_t));
+  csr.numRows = coo.numRows;
+  csr.numCols = coo.numCols;
+  csr.numNonzeros = coo.numNonzeros;
+  csr.rowPtrs = malloc((csr.numRows + 1) * sizeof(uint32_t));
+  csr.colIdxs = malloc(csr.numNonzeros * sizeof(uint32_t));
 
   // Histogram rowIdxs
-  memset(csrMatrix.rowPtrs, 0, (csrMatrix.numRows + 1) * sizeof(uint32_t));
-  for (uint32_t i = 0; i < cooMatrix.numNonzeros; ++i) {
-    uint32_t rowIdx = cooMatrix.rowIdxs[i];
-    csrMatrix.rowPtrs[rowIdx]++;
+  memset(csr.rowPtrs, 0, (csr.numRows + 1) * sizeof(uint32_t));
+  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+    uint32_t rowIdx = coo.rowIdxs[i];
+    csr.rowPtrs[rowIdx]++;
   }
 
   // Prefix sum rowPtrs
   uint32_t sumBeforeNextRow = 0;
-  for (uint32_t rowIdx = 0; rowIdx < csrMatrix.numRows; ++rowIdx) {
+  for (uint32_t rowIdx = 0; rowIdx < csr.numRows; ++rowIdx) {
     uint32_t sumBeforeRow = sumBeforeNextRow;
-    sumBeforeNextRow += csrMatrix.rowPtrs[rowIdx];
-    csrMatrix.rowPtrs[rowIdx] = sumBeforeRow;
+    sumBeforeNextRow += csr.rowPtrs[rowIdx];
+    csr.rowPtrs[rowIdx] = sumBeforeRow;
   }
-  csrMatrix.rowPtrs[csrMatrix.numRows] = sumBeforeNextRow;
+  csr.rowPtrs[csr.numRows] = sumBeforeNextRow;
 
   // Bin the nonzeros
-  for (uint32_t i = 0; i < cooMatrix.numNonzeros; ++i) {
-    uint32_t rowIdx = cooMatrix.rowIdxs[i];
-    uint32_t nnzIdx = csrMatrix.rowPtrs[rowIdx]++;
-    csrMatrix.colIdxs[nnzIdx] = cooMatrix.colIdxs[i];
+  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+    uint32_t rowIdx = coo.rowIdxs[i];
+    uint32_t nnzIdx = csr.rowPtrs[rowIdx]++;
+    csr.colIdxs[nnzIdx] = coo.colIdxs[i];
   }
 
   // Restore rowPtrs
-  for (uint32_t rowIdx = csrMatrix.numRows - 1; rowIdx > 0; --rowIdx) {
-    csrMatrix.rowPtrs[rowIdx] = csrMatrix.rowPtrs[rowIdx - 1];
+  for (uint32_t rowIdx = csr.numRows - 1; rowIdx > 0; --rowIdx) {
+    csr.rowPtrs[rowIdx] = csr.rowPtrs[rowIdx - 1];
   }
-  csrMatrix.rowPtrs[0] = 0;
+  csr.rowPtrs[0] = 0;
 
-  return csrMatrix;
+  return csr;
 }
 
-void freeCOOMatrix(struct COOMatrix cooMatrix) {
-  free(cooMatrix.rowIdxs);
-  free(cooMatrix.colIdxs);
+void free_coo_matrix(struct COOMatrix coo) {
+  free(coo.rowIdxs);
+  free(coo.colIdxs);
 }
 
-void freeCSRMatrix(struct CSRMatrix csrMatrix) {
-  free(csrMatrix.rowPtrs);
-  free(csrMatrix.colIdxs);
+void free_csr_matrix(struct CSRMatrix csr) {
+  free(csr.rowPtrs);
+  free(csr.colIdxs);
 }
 
 struct queue {
@@ -269,9 +276,10 @@ void printQueue(struct queue *q) {
 }
 
 int main() {
+
   // Load coo-matrix from file and convert to csr.
-  struct COOMatrix coo = readCOOMatrix("data/loc-gowalla_edges.txt");
-  struct CSRMatrix csr = coo2csr(coo);
+  struct COOMatrix coo = read_coo_matrix("data/loc-gowalla_edges.txt");
+  struct CSRMatrix csr = coo_to_csr(coo);
 
   nodeLevels = calloc(csr.numRows, sizeof(uint32_t));
 
@@ -290,10 +298,12 @@ int main() {
   bfs(graph, 0);
 
   for (int node = 0; node < csr.numRows; ++node) {
-    printf("%d\n", nodeLevels[node]);
+    printf("nodeLevels[%d]=%d\n", node, nodeLevels[node]);
   }
 
   free(nodeLevels);
+  free_coo_matrix(coo);
+  free_csr_matrix(csr);
 
   return 0;
 }

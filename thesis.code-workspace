@@ -11,5 +11,11 @@
     {
       "path": "bfs-cpu"
     }
-  ]
+  ],
+  "settings": {
+    "files.associations": {
+      "*.sml": "ocaml",
+      "*.tcc": "c"
+    }
+  }
 }
