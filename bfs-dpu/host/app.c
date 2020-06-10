@@ -121,13 +121,16 @@ struct COOMatrix read_coo_matrix(char *file) {
   fscanf(fp, "%u", &coo.numCols);
   fscanf(fp, "%u", &coo.numNonzeros);
 
-  if (coo.numRows % 2 == 1) {
-    PRINT_WARNING("Number of rows must be even. Padding with an extra row.");
-    coo.numRows++;
+  int rowRemainder = coo.numRows % 32;
+  int colRemainder = coo.numCols % 32;
+
+  if (rowRemainder != 0) {
+    PRINT_WARNING("Number of rows must be multiple of 32. Padding with %d extra rows.", rowRemainder);
+    coo.numRows += rowRemainder;
   }
-  if (coo.numCols % 2 == 1) {
-    PRINT_WARNING("Number of columns must be even. Padding with an extra column.");
-    coo.numCols++;
+  if (colRemainder != 0) {
+    PRINT_WARNING("Number of columns must be multiple of 32. Padding with %d extra columns.", colRemainder);
+    coo.numCols += colRemainder;
   }
 
   coo.rowIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
@@ -536,8 +539,12 @@ void print_node_levels(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t numN
 
   // Output.
   PRINT_INFO("Output:");
-  for (uint32_t node = 0; node < numNodes; ++node)
+  for (uint32_t node = 0; node < numNodes; ++node) {
+    uint32_t level = nodeLevels[node];
+    if (node != 0 && level == 0) // Filters out "padded" rows.
+      continue;
     printf("nodeLevels[%u]=%u\n", node, nodeLevels[node]);
+  }
 
   free(nodeLevels);
 }
@@ -551,23 +558,23 @@ int main(int argc, char **argv) {
 
   parse_args(argc, argv, &num_DPUs, &alg, &prt, &file);
 
-  char *bin_path;
+  char *binPath;
   switch (alg) {
   case SrcVtx:
-    bin_path = "bin/src-vtx";
+    binPath = "bin/src-vtx";
     break;
   case DstVtx:
-    bin_path = "bin/dst-vtx";
+    binPath = "bin/dst-vtx";
     break;
   case Edge:
-    bin_path = "bin/edge";
+    binPath = "bin/edge";
     break;
   }
 
   struct dpu_set_t set, dpu;
   PRINT_INFO("Allocating %d DPUs.", num_DPUs);
   DPU_ASSERT(dpu_alloc(num_DPUs, NULL, &set));
-  DPU_ASSERT(dpu_load(set, bin_path, NULL));
+  DPU_ASSERT(dpu_load(set, binPath, NULL));
 
   struct COOMatrix coo = read_coo_matrix(file); // Load coo-matrix from file.
   uint32_t *dpu_node_chunks;                    // Node-chunk indexes for each DPU.

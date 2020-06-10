@@ -297,8 +297,11 @@ int main() {
 
   bfs(graph, 0);
 
-  for (int node = 0; node < csr.numRows; ++node) {
-    printf("nodeLevels[%d]=%d\n", node, nodeLevels[node]);
+  for (uint32_t node = 0; node < csr.numRows; ++node) {
+    uint32_t level = nodeLevels[node];
+    if (node != 0 && level == 0) // Filters out "padded" rows.
+      continue;
+    printf("nodeLevels[%u]=%u\n", node, nodeLevels[node]);
   }
 
   free(nodeLevels);
