@@ -1,0 +1,23 @@
+{
+  "configurations": [
+    {
+      "name": "Linux",
+      "includePath": [
+        "${workspaceFolder}/**",
+        "${UPMEM_HOME}/include/dpu/**"
+      ],
+      "defines": [
+        "_POSIX_C_SOURCE=2"
+      ],
+      "compilerPath": "/usr/bin/gcc",
+      "compilerArgs": [
+        "-I${UPMEM_HOME}/include/dpu",
+        "-L${UPMEM_HOME}/lib",
+        "-ldpu"
+      ],
+      "cStandard": "c99",
+      "intelliSenseMode": "gcc-x64"
+    }
+  ],
+  "version": 4
+}

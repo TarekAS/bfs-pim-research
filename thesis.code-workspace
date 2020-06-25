@@ -1,0 +1,21 @@
+{
+  "folders": [
+    {
+      "name": "bfs-dpu-host",
+      "path": "bfs-dpu/host"
+    },
+    {
+      "name": "bfs-dpu-task",
+      "path": "bfs-dpu/dpu"
+    },
+    {
+      "path": "bfs-cpu"
+    }
+  ],
+  "settings": {
+    "files.associations": {
+      "*.sml": "ocaml",
+      "*.tcc": "c"
+    }
+  }
+}
