@@ -1,7 +1,7 @@
 
 # What is this?
 
-Project to benchmark DPU-accelerated Breadth-First Search, compared to classic CPU-only parallel BFS implementations.
+Project to benchmark DPU-accelerated Breadth-First Search, compared to classic CPU-only parallel BFS implementations. Part of my MSc Thesis on Near-Memory Acceleration of Graph Algorithms.
 
 **Note:** Requires `UPMEM DPU SDK 2020.x.x` to be installed.
 
