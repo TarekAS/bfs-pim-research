@@ -26,8 +26,8 @@ enum Algorithm {
 };
 
 enum Partition {
-  None = 0,
-  _1D = 1,
+  row = 0,
+  col = 1,
   _2D = 2,
 };
 
@@ -56,45 +56,45 @@ struct CSCMatrix {
 };
 
 // Parse CLI args and options.
-void parse_args(int argc, char **argv, int *num_DPUs, enum Algorithm *alg, enum Partition *prt, char **file) {
+void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **file) {
   int c;
   opterr = 0;
   while ((c = getopt(argc, argv, "n:a:p:")) != -1)
     switch (c) {
     case 'n':
-      *num_DPUs = atoi(optarg);
-      if (num_DPUs == 0 || *num_DPUs % 8 != 0) {
+      *num_dpu = atoi(optarg);
+      if (num_dpu == 0 || *num_dpu % 8 != 0) {
         fprintf(stderr, "Number of DPUs must be a multiple of 8.\n");
         exit(1);
       }
       break;
     case 'a':
-      if (strcmp(optarg, "src_vtx") == 0)
+      if (strcmp(optarg, "src") == 0)
         *alg = SrcVtx;
-      else if (strcmp(optarg, "dst_vtx") == 0)
+      else if (strcmp(optarg, "dst") == 0)
         *alg = DstVtx;
       else if (strcmp(optarg, "edge") == 0)
         *alg = Edge;
       else {
-        fprintf(stderr, "Incorrect -a argument. Supported algorithms: src_vtx | dst_vtx | edge\n");
+        fprintf(stderr, "Incorrect -a argument. Supported algorithms: src | dst | edge\n");
         exit(1);
       }
       break;
     case 'p':
-      if (strcmp(optarg, "none") == 0)
-        *prt = None;
-      else if (strcmp(optarg, "1d") == 0)
-        *prt = _1D;
+      if (strcmp(optarg, "row") == 0)
+        *prt = row;
+      else if (strcmp(optarg, "col") == 0)
+        *prt = col;
       else if (strcmp(optarg, "2d") == 0)
         *prt = _2D;
       else {
-        fprintf(stderr, "Incorrect -p argument. Supported partitioning: none | 1d | 2d\n");
+        fprintf(stderr, "Incorrect -p argument. Supported partitioning: row | col | 2d\n");
         exit(1);
       }
       break;
     case '?':
     default:
-      fprintf(stderr, "Bad args. Usage: -n <num_DPUs> -a <src_vtx|dst_vtx|edge> -p <none|1d|2d>\n");
+      fprintf(stderr, "Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d>\n");
     }
 
   int numargs = argc - optind;
@@ -102,53 +102,165 @@ void parse_args(int argc, char **argv, int *num_DPUs, enum Algorithm *alg, enum 
     if (numargs > 1)
       fprintf(stderr, "Too many arguments!\n");
     else
-      fprintf(stderr, "Too few arguments! Please provide data file name (0-indexed COO-formatted matrix).\n");
+      fprintf(stderr, "Too few arguments! Please provide data file name (COO-formatted matrix).\n");
     exit(1);
   }
   *file = argv[optind];
 }
 
-// Reads a coo-formated file into memory.
-struct COOMatrix read_coo_matrix(char *file) {
+// Load coo-formated file into memory.
+// Pads rows/cols to multiple of lcm of 32 and n, and to a minimum of n * 32.
+struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
+
+  if (access(file, F_OK) == -1) {
+    PRINT_ERROR("Could not find file %s.", file);
+    exit(1);
+  }
 
   PRINT_INFO("Loading COO-formated graph from %s.", file);
-
   struct COOMatrix coo;
 
-  // Initialize fields.
+  // Initialize COO from file.
   FILE *fp = fopen(file, "r");
   fscanf(fp, "%u", &coo.numRows);
   fscanf(fp, "%u", &coo.numCols);
   fscanf(fp, "%u", &coo.numNonzeros);
-
-  int rowRemainder = coo.numRows % 32;
-  int colRemainder = coo.numCols % 32;
-
-  if (rowRemainder != 0) {
-    PRINT_WARNING("Number of rows must be multiple of 32. Padding with %d extra rows.", rowRemainder);
-    coo.numRows += rowRemainder;
-  }
-  if (colRemainder != 0) {
-    PRINT_WARNING("Number of columns must be multiple of 32. Padding with %d extra columns.", colRemainder);
-    coo.numCols += colRemainder;
-  }
-
   coo.rowIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
   coo.colIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
 
-  PRINT_INFO("Reading COO-formated matrix - %u rows, %u columns, %u nonzeros.", coo.numRows, coo.numCols, coo.numNonzeros);
-
-  // Read nonzeros.
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx;
-    uint32_t colIdx;
-    fscanf(fp, "%u", &rowIdx);
-    fscanf(fp, "%u", &colIdx);
-    coo.rowIdxs[i] = rowIdx;
-    coo.colIdxs[i] = colIdx;
+  // Pad number rows/cols to a minimum of n * 32.
+  uint32_t min = n * 32;
+  if (coo.numRows < min) {
+    PRINT_WARNING("Number of rows too low. Setting number of rows to %d.", min);
+    coo.numRows = min;
+  }
+  if (coo.numCols < min) {
+    PRINT_WARNING("Number of cols too low. Setting number of cols to %d.", min);
+    coo.numCols = min;
   }
 
+  // Find Least Common Multiple of n and 32.
+  uint32_t lcm = 0;
+  uint32_t lar = (n > 32) ? n : 32;
+  uint32_t small = (n > 32) ? 32 : n;
+
+  for (int i = lar;; i += lar)
+    if (i % small == 0) {
+      lcm = i;
+      break;
+    }
+
+  // Pad Rows/Cols to multiple of LCM.
+  uint32_t rowPad = lcm - coo.numRows % lcm;
+  uint32_t colPad = lcm - coo.numCols % lcm;
+
+  if (rowPad != 0) {
+    PRINT_WARNING("Number of rows must be multiple of %d. Padding with %d extra rows.", lcm, rowPad);
+    coo.numRows += rowPad;
+  }
+  if (colPad != 0) {
+    PRINT_WARNING("Number of columns must be multiple of %d. Padding with %d extra columns.", lcm, colPad);
+    coo.numCols += colPad;
+  }
+
+  // Read nonzeros.
+  PRINT_INFO("Reading COO-formated matrix - %u rows, %u columns, %u nonzeros.", coo.numRows, coo.numCols, coo.numNonzeros);
+
+  uint32_t rowIdx, colIdx;
+  fscanf(fp, "%u %u%*[^\n]\n", &rowIdx, &colIdx); // Read first 2 integers of each line.
+
+  uint32_t nodeOffset = rowIdx; // Guarantee 0-indexed COO.
+  coo.rowIdxs[0] = rowIdx - nodeOffset;
+  coo.colIdxs[0] = colIdx - nodeOffset;
+
+  for (uint32_t i = 1; i < coo.numNonzeros; ++i) {
+    fscanf(fp, "%u %u%*[^\n]\n", &rowIdx, &colIdx);
+    coo.rowIdxs[i] = rowIdx - nodeOffset;
+    coo.colIdxs[i] = colIdx - nodeOffset;
+  }
+  fclose(fp);
+
   return coo;
+}
+
+// Partition COO matrix into n COO matrices by col, or by row, or both (2D).
+struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt) {
+
+  if (n % 2 != 0) {
+    PRINT_ERROR("Fatal: Cannot partition matrix by %d. partition_coo expects even number of partitions.", n);
+    exit(1);
+  }
+
+  struct COOMatrix *prts = malloc(n * sizeof(struct COOMatrix));
+
+  // Initialize numNonzeros.
+  for (int i = 0; i < n; ++i)
+    prts[i].numNonzeros = 0;
+
+  uint32_t rowDiv = 1;
+  uint32_t colDiv = 1;
+
+  // Determine numRows, numCols, and numNonZeros per partition.
+  switch (prt) {
+  case row:
+    rowDiv = n;
+    for (int i = 0; i < coo.numNonzeros; ++i)
+      prts[coo.rowIdxs[i] % n].numNonzeros++;
+    break;
+
+  case col:
+    colDiv = n;
+    for (int i = 0; i < coo.numNonzeros; ++i)
+      prts[coo.colIdxs[i] % n].numNonzeros++;
+    break;
+
+  case _2D:
+    // Note: COO-matrix is always square (even if directed).
+    rowDiv = n / 2; // Sqrt(n)  ... n must be a perferct square. Or, let user give you number of tiles in each dimension (for rectangle tiles).
+    colDiv = n / 2;
+    for (int i = 0; i < coo.numNonzeros; ++i) {
+      uint32_t pRow = coo.rowIdxs[i] % rowDiv; // Partition row index.
+      uint32_t pCol = coo.colIdxs[i] % colDiv; // Partition col index.
+      uint32_t p = pRow * n + pCol;            // Partition actual index.
+      prts[p].numNonzeros++;
+    }
+
+    break;
+  }
+
+  // Populate COO partitions.
+  for (int i = 0; i < n; ++i) {
+    prts[i].numRows = coo.numRows / rowDiv; // even.
+    prts[i].numCols = coo.numCols / colDiv; // even.
+    prts[i].rowIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
+    prts[i].colIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
+    prts[i].numNonzeros = 0; // We'll reuse as index to appending data.
+  }
+
+  // Bin row and col pairs.
+  for (int i = 0; i < coo.numNonzeros; ++i) {
+    uint32_t rowIdx = coo.rowIdxs[i];
+    uint32_t colIdx = coo.colIdxs[i];
+
+    uint32_t p;
+
+    if (prt == row) {
+      p = rowIdx % n;
+    } else if (prt == col) {
+      p = colIdx % n;
+    } else if (prt == _2D) {
+      uint32_t pRow = coo.rowIdxs[i] % (n / 2); // TODO: must be sqrt(n)
+      uint32_t pCol = coo.colIdxs[i] % (n / 2); // TODO: must be sqrt(n)
+      p = pRow * n + pCol;
+    }
+
+    uint32_t idx = prts[p].numNonzeros;
+    prts[p].colIdxs[idx] = colIdx;
+    prts[p].rowIdxs[idx] = rowIdx;
+    prts[p].numNonzeros++;
+  }
+
+  return prts;
 }
 
 // Converts COO matrix to CSR format.
@@ -306,23 +418,23 @@ void dpu_copy_from_uint32(struct dpu_set_t dpu, const char *symbol_name, uint32_
 }
 
 // Each DPU gets chunks of 32 nodes, distributed as evenly as possible.
-uint32_t chunkize_nodes(uint32_t numRows, uint32_t num_DPUs, uint32_t **dpu_node_chunks) {
+uint32_t chunkize_nodes(uint32_t numRows, uint32_t num_dpu, uint32_t **dpu_node_chunks) {
   uint32_t totalChunks = (numRows + 31) / 32; // ceil.
-  uint32_t minChunksPerDPU = totalChunks / num_DPUs;
-  uint32_t chunksRemainder = totalChunks % num_DPUs;
-  uint32_t *chunksPerDPU = malloc(num_DPUs * sizeof(uint32_t));
-  for (uint32_t i = 0; i < num_DPUs; ++i)
+  uint32_t minChunksPerDPU = totalChunks / num_dpu;
+  uint32_t chunksRemainder = totalChunks % num_dpu;
+  uint32_t *chunksPerDPU = malloc(num_dpu * sizeof(uint32_t));
+  for (uint32_t i = 0; i < num_dpu; ++i)
     if (i < chunksRemainder)
       chunksPerDPU[i] = minChunksPerDPU + 1;
     else
       chunksPerDPU[i] = minChunksPerDPU;
 
   // Node idxs for each DPU.
-  uint32_t *chunks = malloc((num_DPUs + 1) * sizeof(uint32_t));
+  uint32_t *chunks = malloc((num_dpu + 1) * sizeof(uint32_t));
   chunks[0] = 0;
-  for (uint32_t i = 1; i < num_DPUs; ++i)
+  for (uint32_t i = 1; i < num_dpu; ++i)
     chunks[i] = chunks[i - 1] + chunksPerDPU[i - 1] * 32;
-  chunks[num_DPUs] = numRows;
+  chunks[num_dpu] = numRows;
 
   *dpu_node_chunks = chunks;
 
@@ -330,7 +442,7 @@ uint32_t chunkize_nodes(uint32_t numRows, uint32_t num_DPUs, uint32_t **dpu_node
   return totalChunks;
 }
 
-void populate_mram_csr(struct dpu_set_t *set, struct dpu_set_t *dpu, struct CSRMatrix csr, uint32_t *dpu_node_chunks, uint32_t totalChunks) {
+void populate_mram(struct dpu_set_t *set, struct dpu_set_t *dpu, struct CSRMatrix csr, uint32_t *dpu_node_chunks, uint32_t totalChunks) {
 
   // Initialize nextFrontier.
   uint32_t *nextFrontier = calloc(totalChunks, sizeof(uint32_t));
@@ -551,12 +663,12 @@ void print_node_levels(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t numN
 
 int main(int argc, char **argv) {
 
-  int num_DPUs = 8;
+  int num_dpu = 8;
   enum Algorithm alg = SrcVtx;
-  enum Partition prt = None;
+  enum Partition prt = row;
   char *file = NULL;
 
-  parse_args(argc, argv, &num_DPUs, &alg, &prt, &file);
+  parse_args(argc, argv, &num_dpu, &alg, &prt, &file);
 
   char *binPath;
   switch (alg) {
@@ -572,48 +684,50 @@ int main(int argc, char **argv) {
   }
 
   struct dpu_set_t set, dpu;
-  PRINT_INFO("Allocating %d DPUs.", num_DPUs);
-  DPU_ASSERT(dpu_alloc(num_DPUs, NULL, &set));
+  PRINT_INFO("Allocating %d DPUs.", num_dpu);
+  DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
   DPU_ASSERT(dpu_load(set, binPath, NULL));
 
-  struct COOMatrix coo = read_coo_matrix(file); // Load coo-matrix from file.
-  uint32_t *dpu_node_chunks;                    // Node-chunk indexes for each DPU.
+  struct COOMatrix coo = load_coo_matrix(file, num_dpu);         // Load coo-matrix from file.
+  struct COOMatrix *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
+  free_coo_matrix(coo);
 
-  switch (alg) {
-  case SrcVtx: {
-    switch (prt) {
-    case None: {
-      struct CSRMatrix csr = coo_to_csr(coo);
-      uint32_t totalChunks = chunkize_nodes(csr.numRows, num_DPUs, &dpu_node_chunks);
-      populate_mram_csr(&set, &dpu, csr, dpu_node_chunks, totalChunks);
-      bfs_src_vtx(set, dpu, totalChunks);
-      free_csr_matrix(csr);
-    } break;
-    case _1D: {
-    } break;
+  if (alg == SrcVtx) {
 
-    case _2D: {
+    // Convert to CSR.
+    struct CSRMatrix *csr_prts = malloc(num_dpu * sizeof(struct CSRMatrix));
+    for (int i = 0; i < num_dpu; ++i)
+      csr_prts[i] = coo_to_csr(coo_prts[i]);
 
-    } break;
-    }
+    // TODO: Populate MRAM
 
-  } break;
-  case DstVtx: {
-    // struct CSCMatrix csc = coo2csc(coo);
-    // uint32_t totalChunks = chunkize_nodes(csc.numCols, num_DPUs, &dpu_node_chunks);
-    // populate_mram_csc(&set, &dpu, csc, dpu_node_chunks, totalChunks);
-    // bfs_dst_vtx(set, dpu, totalChunks);
-    // free_csc_matrix(csc);
-  } break;
-  case Edge:
-    break;
+    for (int i = 0; i < num_dpu; ++i)
+      free_csr_matrix(csr_prts[i]); // Segfaulting. Are we initializing rowPtrs?
+    free(csr_prts);
+
+  } else if (alg == DstVtx) {
+
+    // Convert to CSC.
+    struct CSCMatrix *csc_prts = malloc(num_dpu * sizeof(struct CSRMatrix));
+    for (int i = 0; i < num_dpu; ++i)
+      csc_prts[i] = coo_to_csc(coo_prts[i]);
+    // TODO: Populate MRAM (common alg)
+
+    for (int i = 0; i < num_dpu; ++i)
+      free_csc_matrix(csc_prts[i]);
+    free(csc_prts);
+  } else if (alg == Edge) {
+    // TODO: Populate MRAM
   }
 
-  // Distribute nodes to DPUs as fairly as possible.
-  print_node_levels(set, dpu, coo.numRows);
+  // TODO: Launch specific algorithm.
+  // TODO: More stuff
 
-  // Free resources.
-  free(dpu_node_chunks);
-  free_coo_matrix(coo);
+  for (int i = 0; i < num_dpu; ++i)
+    free_coo_matrix(coo_prts[i]);
+  free(coo_prts);
+
+  print_node_levels(set, dpu, coo.numRows);
   DPU_ASSERT(dpu_free(set));
+  return 0;
 }
