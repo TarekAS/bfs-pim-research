@@ -3,7 +3,6 @@
     {
       "name": "Linux",
       "includePath": [
-        "${workspaceFolder}/**",
         "${UPMEM_HOME}/include/dpu/**"
       ],
       "defines": [

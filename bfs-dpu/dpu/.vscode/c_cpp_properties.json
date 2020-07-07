@@ -2,11 +2,8 @@
   "configurations": [
     {
       "name": "Linux",
-      "includePath": [
-        "${workspaceFolder}/**"
-      ],
-      "compilerPath": "/home/tarek/upmem-2020.1.0/bin/dpu-upmem-dpurte-clang",
-      "cStandard": "c99",
+      "compilerPath": "${UPMEM_HOME}/bin/dpu-upmem-dpurte-clang",
+      "cStandard": "c11",
       "intelliSenseMode": "clang-x64"
     }
   ],
