@@ -668,7 +668,7 @@ int main(int argc, char **argv) {
 
   int num_dpu = 8;
   enum Algorithm alg = SrcVtx;
-  enum Partition prt;
+  enum Partition prt = row;
   char *file = NULL;
 
   parse_args(argc, argv, &num_dpu, &alg, &prt, &file);
