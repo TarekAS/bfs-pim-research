@@ -58,6 +58,7 @@ struct CSCMatrix {
 
 // Parse CLI args and options.
 void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **file) {
+  bool is_prt_set = false;
   int c;
   opterr = 0;
   while ((c = getopt(argc, argv, "n:a:p:")) != -1)
@@ -70,13 +71,19 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       }
       break;
     case 'a':
-      if (strcmp(optarg, "src") == 0)
+      if (strcmp(optarg, "src") == 0) {
         *alg = SrcVtx;
-      else if (strcmp(optarg, "dst") == 0)
+        if (!is_prt_set)
+          prt = row;
+      } else if (strcmp(optarg, "dst") == 0) {
         *alg = DstVtx;
-      else if (strcmp(optarg, "edge") == 0)
+        if (!is_prt_set)
+          prt = col;
+      } else if (strcmp(optarg, "edge") == 0) {
         *alg = Edge;
-      else {
+        if (!is_prt_set)
+          prt = _2D;
+      } else {
         PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge\n");
         exit(1);
       }
@@ -92,6 +99,7 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
         PRINT_ERROR("Incorrect -p argument. Supported partitioning: row | col | 2d\n");
         exit(1);
       }
+      is_prt_set = true;
       break;
     case '?':
     default:
@@ -660,7 +668,7 @@ int main(int argc, char **argv) {
 
   int num_dpu = 8;
   enum Algorithm alg = SrcVtx;
-  enum Partition prt = row;
+  enum Partition prt;
   char *file = NULL;
 
   parse_args(argc, argv, &num_dpu, &alg, &prt, &file);
@@ -687,10 +695,6 @@ int main(int argc, char **argv) {
   struct COOMatrix *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
   free_coo_matrix(coo);
 
-  // TODO: Tests here.
-
-  return 0;
-
   if (alg == SrcVtx) {
 
     // Convert to CSR.
@@ -699,10 +703,6 @@ int main(int argc, char **argv) {
       csr_prts[i] = coo_to_csr(coo_prts[i]);
 
     // TODO: Populate MRAM
-
-    for (int i = 0; i < num_dpu; ++i)
-      free_csr_matrix(csr_prts[i]); // Segfaulting. Are we initializing rowPtrs?
-    free(csr_prts);
 
   } else if (alg == DstVtx) {
 
@@ -719,12 +719,11 @@ int main(int argc, char **argv) {
     // TODO: Populate MRAM
   }
 
-  // TODO: Launch specific algorithm.
-  // TODO: More stuff
-
   for (int i = 0; i < num_dpu; ++i)
     free_coo_matrix(coo_prts[i]);
   free(coo_prts);
+
+  return 0;
 
   print_node_levels(set, dpu, coo.numRows);
   DPU_ASSERT(dpu_free(set));
