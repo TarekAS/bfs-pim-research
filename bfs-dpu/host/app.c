@@ -204,21 +204,18 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
   // Determine numRows, numCols, and numNonZeros per partition.
   switch (prt) {
   case row:
-    PRINT_INFO("Row partitioning");
     rowDiv = n; // n assumed to be even.
     for (int i = 0; i < coo.numNonzeros; ++i)
       prts[coo.rowIdxs[i] % n].numNonzeros++;
     break;
 
   case col:
-    PRINT_INFO("Col partitioning");
     colDiv = n; // n assumed to be even.
     for (int i = 0; i < coo.numNonzeros; ++i)
       prts[coo.colIdxs[i] % n].numNonzeros++;
     break;
 
   case _2D:
-    PRINT_INFO("2D partitioning");
     // Find the two nearest factors of n.
     rowDiv = (int)sqrt(n);
     while (n % rowDiv != 0)
@@ -289,6 +286,7 @@ struct CSRMatrix coo_to_csr(struct COOMatrix coo) {
     csr.rowPtrs[rowIdx]++;
   }
 
+  exit(1);
   // Prefix sum rowPtrs
   uint32_t sumBeforeNextRow = 0;
   for (uint32_t rowIdx = 0; rowIdx < csr.numRows; ++rowIdx) {
@@ -680,12 +678,27 @@ int main(int argc, char **argv) {
   switch (alg) {
   case SrcVtx:
     binPath = "bin/src-vtx";
+    PRINT_INFO("Algorithm: Source-Vertex-based BFS.");
     break;
   case DstVtx:
     binPath = "bin/dst-vtx";
+    PRINT_INFO("Algorithm: Destination-Vertex-based BFS.");
     break;
   case Edge:
     binPath = "bin/edge";
+    PRINT_INFO("Algorithm: Edge-based BFS.");
+    break;
+  }
+
+  switch (prt) {
+  case row:
+    PRINT_INFO("1D Row partitioning (source-nodes).");
+    break;
+  case col:
+    PRINT_INFO("1D Column partitioning (destination-nodes/neighbors).");
+    break;
+  case _2D:
+    PRINT_INFO("2D partitioning (both source-nodes and destination-nodes).");
     break;
   }
 
@@ -699,7 +712,6 @@ int main(int argc, char **argv) {
   free_coo_matrix(coo);
 
   if (alg == SrcVtx) {
-
     // Convert to CSR.
     struct CSRMatrix *csr_prts = malloc(num_dpu * sizeof(struct CSRMatrix));
     for (int i = 0; i < num_dpu; ++i)
@@ -725,6 +737,8 @@ int main(int argc, char **argv) {
   for (int i = 0; i < num_dpu; ++i)
     free_coo_matrix(coo_prts[i]);
   free(coo_prts);
+
+  return 0;
 
   print_node_levels(set, dpu, coo.numRows);
   DPU_ASSERT(dpu_free(set));
