@@ -257,9 +257,9 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
     } else if (prt == col) {
       p = colIdx % n;
     } else if (prt == _2D) {
-      uint32_t pRow = coo.rowIdxs[i] % (n / 2); // TODO: must be sqrt(n)
-      uint32_t pCol = coo.colIdxs[i] % (n / 2); // TODO: must be sqrt(n)
-      p = pRow * n + pCol;
+      uint32_t pRow = coo.rowIdxs[i] % rowDiv;
+      uint32_t pCol = coo.colIdxs[i] % colDiv;
+      p = pRow * colDiv + pCol;
     }
 
     uint32_t idx = prts[p].numNonzeros;
