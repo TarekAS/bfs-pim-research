@@ -108,20 +108,10 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
     exit(1);
   }
   *file = argv[optind];
-
-  // Check if num_dpu is a perfect square in case of 2D partitioning.
-  if (prt == _2D) {
-    float fVar = sqrt((double)*num_dpu);
-    int iVar = fVar;
-    if (iVar != fVar) {
-      PRINT_ERROR("Error: Number of DPUs must be a perfect square when choosing 2D partitioning.");
-      exit(1);
-    }
-  }
 }
 
 // Load coo-formated file into memory.
-// Pads rows/cols to multiple of lcm of 32 and n, and to a minimum of n * 32.
+// Pads nodes to multiple of lcm of 32 and n, and to a minimum of n * 32.
 struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
 
   if (access(file, F_OK) == -1) {
@@ -133,24 +123,21 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
   struct COOMatrix coo;
 
   // Initialize COO from file.
+  uint32_t nodes = 0;
+  uint32_t edges = 0;
+
   FILE *fp = fopen(file, "r");
-  fscanf(fp, "%u", &coo.numRows);
-  fscanf(fp, "%u", &coo.numCols);
-  fscanf(fp, "%u", &coo.numNonzeros);
+  fscanf(fp, "%u", &nodes);
+  fscanf(fp, "%u", &edges);
+  coo.numNonzeros = edges;
   coo.rowIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
   coo.colIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
 
-  if (coo.numRows != coo.numCols) {
-    PRINT_ERROR("Error: number of rows and columns of COO-matrix are not equal. Exiting.");
-    exit(1);
-  }
-
-  // Pad number rows/cols to a minimum of n * 32.
+  // Pad number of nodes to a minimum of n * 32.
   uint32_t min = n * 32;
-  if (coo.numRows < min) {
-    PRINT_WARNING("Number of rows/cols too low. Setting number of rows/cols to %d.", min);
-    coo.numRows = min;
-    coo.numCols = min;
+  if (nodes < min) {
+    PRINT_WARNING("Number of nodes too low. Setting number of nodes to %d.", min);
+    nodes = min;
   }
 
   // Find Least Common Multiple of n and 32.
@@ -164,17 +151,18 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
       break;
     }
 
-  // Pad rows/cols to multiple of LCM.
-  uint32_t padding = lcm - coo.numRows % lcm;
-
+  // Pad nodes to multiple of LCM.
+  uint32_t padding = lcm - nodes % lcm;
   if (padding != 0) {
-    PRINT_WARNING("Number of rows/cols must be multiple of %d. Padding with %d extra rows/cols.", lcm, padding);
-    coo.numRows += padding;
-    coo.numCols += padding;
+    PRINT_WARNING("Number of nodes must be multiple of %d. Padding with %d extra nodes.", lcm, padding);
+    nodes += padding;
   }
 
+  coo.numRows = nodes;
+  coo.numCols = nodes;
+
   // Read nonzeros.
-  PRINT_INFO("Reading COO-formated matrix - %u rows, %u columns, %u nonzeros.", coo.numRows, coo.numCols, coo.numNonzeros);
+  PRINT_INFO("Reading COO-formated graph - %u nodes, %u edges.", nodes, edges);
 
   uint32_t rowIdx, colIdx;
   fscanf(fp, "%u %u%*[^\n]\n", &rowIdx, &colIdx); // Read first 2 integers of each line.
@@ -698,6 +686,10 @@ int main(int argc, char **argv) {
   struct COOMatrix coo = load_coo_matrix(file, num_dpu);         // Load coo-matrix from file.
   struct COOMatrix *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
   free_coo_matrix(coo);
+
+  // TODO: Tests here.
+
+  return 0;
 
   if (alg == SrcVtx) {
 
