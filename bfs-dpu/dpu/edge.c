@@ -43,6 +43,8 @@ int main() {
   uint32_t idx = chunksPerTasklet * me();
   uint32_t lim = idx + chunksPerTasklet;
 
+  // TODO: Implement edge-based BFS.
+
   for (uint32_t c = idx; c < lim; ++c) {
   }
   barrier_wait(&nf_barrier);

@@ -27,7 +27,7 @@ For example:
 
 You can pass these optional arguments to `./bin/app`
 ```
--n <int>        Number of DPUs to use. Must be a multiple of 8.
+-n <int>        Number of DPUs to use. Must be a multiple of 8. Max 64 if using emulator.
 -a <string>     BFS algorithm variation to use: src | dst | edge.
 -p <partition>  The manner in which to partition the nodes per DPU: row | col | 2d.
 ```

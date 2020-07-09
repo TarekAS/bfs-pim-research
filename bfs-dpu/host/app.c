@@ -66,7 +66,7 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
     case 'n':
       *num_dpu = atoi(optarg);
       if (num_dpu == 0 || *num_dpu % 8 != 0) {
-        PRINT_ERROR("Number of DPUs must be a multiple of 8.\n");
+        PRINT_ERROR("Number of DPUs must be a multiple of 8.");
         exit(1);
       }
       break;
@@ -84,7 +84,7 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
         if (!is_prt_set)
           *prt = _2D;
       } else {
-        PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge\n");
+        PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge");
         exit(1);
       }
       break;
@@ -96,23 +96,23 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       else if (strcmp(optarg, "2d") == 0)
         *prt = _2D;
       else {
-        PRINT_ERROR("Incorrect -p argument. Supported partitioning: row | col | 2d\n");
+        PRINT_ERROR("Incorrect -p argument. Supported partitioning: row | col | 2d");
         exit(1);
       }
       is_prt_set = true;
       break;
     case '?':
     default:
-      PRINT_ERROR("Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d>\n");
+      PRINT_ERROR("Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d>");
       exit(1);
     }
 
   int numargs = argc - optind;
   if (numargs != 1) {
     if (numargs > 1)
-      PRINT_ERROR("Too many arguments!\n");
+      PRINT_ERROR("Too many arguments!");
     else
-      PRINT_ERROR("Too few arguments! Please provide data file name (COO-formatted matrix).\n");
+      PRINT_ERROR("Too few arguments! Please provide data file name (COO-formatted matrix).");
     exit(1);
   }
   *file = argv[optind];
@@ -204,18 +204,21 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
   // Determine numRows, numCols, and numNonZeros per partition.
   switch (prt) {
   case row:
+    PRINT_INFO("Row partitioning");
     rowDiv = n; // n assumed to be even.
     for (int i = 0; i < coo.numNonzeros; ++i)
       prts[coo.rowIdxs[i] % n].numNonzeros++;
     break;
 
   case col:
+    PRINT_INFO("Col partitioning");
     colDiv = n; // n assumed to be even.
     for (int i = 0; i < coo.numNonzeros; ++i)
       prts[coo.colIdxs[i] % n].numNonzeros++;
     break;
 
   case _2D:
+    PRINT_INFO("2D partitioning");
     // Find the two nearest factors of n.
     rowDiv = (int)sqrt(n);
     while (n % rowDiv != 0)
@@ -694,8 +697,6 @@ int main(int argc, char **argv) {
   struct COOMatrix coo = load_coo_matrix(file, num_dpu);         // Load coo-matrix from file.
   struct COOMatrix *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
   free_coo_matrix(coo);
-
-  return 0;
 
   if (alg == SrcVtx) {
 
