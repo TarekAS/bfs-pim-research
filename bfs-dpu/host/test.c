@@ -1,6 +1,7 @@
 #include <dpu.h>
 #include <dpu_log.h>
 #include <dpu_memory.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 

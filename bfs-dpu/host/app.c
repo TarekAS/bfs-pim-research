@@ -3,6 +3,7 @@
 #include <dpu.h>
 #include <dpu_log.h>
 #include <dpu_memory.h>
+#include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -64,7 +65,7 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
     case 'n':
       *num_dpu = atoi(optarg);
       if (num_dpu == 0 || *num_dpu % 8 != 0) {
-        fprintf(stderr, "Number of DPUs must be a multiple of 8.\n");
+        PRINT_ERROR("Number of DPUs must be a multiple of 8.\n");
         exit(1);
       }
       break;
@@ -76,7 +77,7 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       else if (strcmp(optarg, "edge") == 0)
         *alg = Edge;
       else {
-        fprintf(stderr, "Incorrect -a argument. Supported algorithms: src | dst | edge\n");
+        PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge\n");
         exit(1);
       }
       break;
@@ -88,24 +89,35 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       else if (strcmp(optarg, "2d") == 0)
         *prt = _2D;
       else {
-        fprintf(stderr, "Incorrect -p argument. Supported partitioning: row | col | 2d\n");
+        PRINT_ERROR("Incorrect -p argument. Supported partitioning: row | col | 2d\n");
         exit(1);
       }
       break;
     case '?':
     default:
-      fprintf(stderr, "Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d>\n");
+      PRINT_ERROR("Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d>\n");
+      exit(1);
     }
 
   int numargs = argc - optind;
   if (numargs != 1) {
     if (numargs > 1)
-      fprintf(stderr, "Too many arguments!\n");
+      PRINT_ERROR("Too many arguments!\n");
     else
-      fprintf(stderr, "Too few arguments! Please provide data file name (COO-formatted matrix).\n");
+      PRINT_ERROR("Too few arguments! Please provide data file name (COO-formatted matrix).\n");
     exit(1);
   }
   *file = argv[optind];
+
+  // Check if num_dpu is a perfect square in case of 2D partitioning.
+  if (prt == _2D) {
+    float fVar = sqrt((double)*num_dpu);
+    int iVar = fVar;
+    if (iVar != fVar) {
+      PRINT_ERROR("Error: Number of DPUs must be a perfect square when choosing 2D partitioning.");
+      exit(1);
+    }
+  }
 }
 
 // Load coo-formated file into memory.
@@ -128,14 +140,16 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
   coo.rowIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
   coo.colIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
 
+  if (coo.numRows != coo.numCols) {
+    PRINT_ERROR("Error: number of rows and columns of COO-matrix are not equal. Exiting.");
+    exit(1);
+  }
+
   // Pad number rows/cols to a minimum of n * 32.
   uint32_t min = n * 32;
   if (coo.numRows < min) {
-    PRINT_WARNING("Number of rows too low. Setting number of rows to %d.", min);
+    PRINT_WARNING("Number of rows/cols too low. Setting number of rows/cols to %d.", min);
     coo.numRows = min;
-  }
-  if (coo.numCols < min) {
-    PRINT_WARNING("Number of cols too low. Setting number of cols to %d.", min);
     coo.numCols = min;
   }
 
@@ -150,17 +164,13 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
       break;
     }
 
-  // Pad Rows/Cols to multiple of LCM.
-  uint32_t rowPad = lcm - coo.numRows % lcm;
-  uint32_t colPad = lcm - coo.numCols % lcm;
+  // Pad rows/cols to multiple of LCM.
+  uint32_t padding = lcm - coo.numRows % lcm;
 
-  if (rowPad != 0) {
-    PRINT_WARNING("Number of rows must be multiple of %d. Padding with %d extra rows.", lcm, rowPad);
-    coo.numRows += rowPad;
-  }
-  if (colPad != 0) {
-    PRINT_WARNING("Number of columns must be multiple of %d. Padding with %d extra columns.", lcm, colPad);
-    coo.numCols += colPad;
+  if (padding != 0) {
+    PRINT_WARNING("Number of rows/cols must be multiple of %d. Padding with %d extra rows/cols.", lcm, padding);
+    coo.numRows += padding;
+    coo.numCols += padding;
   }
 
   // Read nonzeros.
@@ -186,11 +196,6 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
 // Partition COO matrix into n COO matrices by col, or by row, or both (2D).
 struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt) {
 
-  if (n % 2 != 0) {
-    PRINT_ERROR("Fatal: Cannot partition matrix by %d. partition_coo expects even number of partitions.", n);
-    exit(1);
-  }
-
   struct COOMatrix *prts = malloc(n * sizeof(struct COOMatrix));
 
   // Initialize numNonzeros.
@@ -203,25 +208,28 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
   // Determine numRows, numCols, and numNonZeros per partition.
   switch (prt) {
   case row:
-    rowDiv = n;
+    rowDiv = n; // n assumed to be even.
     for (int i = 0; i < coo.numNonzeros; ++i)
       prts[coo.rowIdxs[i] % n].numNonzeros++;
     break;
 
   case col:
-    colDiv = n;
+    colDiv = n; // n assumed to be even.
     for (int i = 0; i < coo.numNonzeros; ++i)
       prts[coo.colIdxs[i] % n].numNonzeros++;
     break;
 
   case _2D:
-    // Note: COO-matrix is always square (even if directed).
-    rowDiv = n / 2; // Sqrt(n)  ... n must be a perferct square. Or, let user give you number of tiles in each dimension (for rectangle tiles).
-    colDiv = n / 2;
+    // Find the two nearest factors of n.
+    rowDiv = (int)sqrt(n);
+    while (n % rowDiv != 0)
+      rowDiv--;
+    colDiv = n / rowDiv;
+
     for (int i = 0; i < coo.numNonzeros; ++i) {
       uint32_t pRow = coo.rowIdxs[i] % rowDiv; // Partition row index.
       uint32_t pCol = coo.colIdxs[i] % colDiv; // Partition col index.
-      uint32_t p = pRow * n + pCol;            // Partition actual index.
+      uint32_t p = pRow * colDiv + pCol;       // col-major index of coo.
       prts[p].numNonzeros++;
     }
 
@@ -230,8 +238,8 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
 
   // Populate COO partitions.
   for (int i = 0; i < n; ++i) {
-    prts[i].numRows = coo.numRows / rowDiv; // even.
-    prts[i].numCols = coo.numCols / colDiv; // even.
+    prts[i].numRows = coo.numRows / rowDiv;
+    prts[i].numCols = coo.numCols / colDiv;
     prts[i].rowIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
     prts[i].colIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
     prts[i].numNonzeros = 0; // We'll reuse as index to appending data.
@@ -644,8 +652,7 @@ void print_node_levels(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t numN
   _DPU_FOREACH_I(set, dpu, i) {
     uint32_t numNodes;
     dpu_copy_from_uint32(dpu, "numNodes", &numNodes);
-    dpu_copy_from_mram_uint32_array(dpu, "nodeLevels", &nodeLevels[writeIdx],
-                                    numNodes);
+    dpu_copy_from_mram_uint32_array(dpu, "nodeLevels", &nodeLevels[writeIdx], numNodes);
     writeIdx += numNodes;
   }
 
