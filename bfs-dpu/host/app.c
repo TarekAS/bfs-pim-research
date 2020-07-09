@@ -74,15 +74,15 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       if (strcmp(optarg, "src") == 0) {
         *alg = SrcVtx;
         if (!is_prt_set)
-          prt = row;
+          *prt = row;
       } else if (strcmp(optarg, "dst") == 0) {
         *alg = DstVtx;
         if (!is_prt_set)
-          prt = col;
+          *prt = col;
       } else if (strcmp(optarg, "edge") == 0) {
         *alg = Edge;
         if (!is_prt_set)
-          prt = _2D;
+          *prt = _2D;
       } else {
         PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge\n");
         exit(1);
@@ -695,6 +695,8 @@ int main(int argc, char **argv) {
   struct COOMatrix *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
   free_coo_matrix(coo);
 
+  return 0;
+
   if (alg == SrcVtx) {
 
     // Convert to CSR.
@@ -722,8 +724,6 @@ int main(int argc, char **argv) {
   for (int i = 0; i < num_dpu; ++i)
     free_coo_matrix(coo_prts[i]);
   free(coo_prts);
-
-  return 0;
 
   print_node_levels(set, dpu, coo.numRows);
   DPU_ASSERT(dpu_free(set));
