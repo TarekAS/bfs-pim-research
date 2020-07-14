@@ -56,6 +56,81 @@ struct CSCMatrix {
   uint32_t *rowIdxs;
 };
 
+/**
+ * @fn dpu_insert_to_mram_uint32_array
+ * @brief Inserts data into the MRAM of a DPU at the last used MRAM address.
+ * @param dpu_set the identifier of the DPU set.
+ * @param symbol_name the name of the DPU symbol where to copy the pointer of the data.
+ * @param src the host buffer containing the data to copy.
+ * @param length the number of elements in the array.
+ */
+void dpu_insert_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
+  // Get end of used MRAM pointer.
+  mram_addr_t p_used_mram_end;
+  DPU_ASSERT(dpu_copy_from(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
+
+  // Set the array pointer as the previous pointer.
+  DPU_ASSERT(dpu_copy_to(dpu, symbol_name, 0, &p_used_mram_end, sizeof(mram_addr_t)));
+
+  // Copy the data to MRAM.
+  size_t size = length * sizeof(uint32_t);
+  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size, 0));
+
+  // Increment end of used MRAM pointer.
+  p_used_mram_end += size;
+  DPU_ASSERT(dpu_copy_to(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
+}
+
+/**
+ * @fn dpu_copy_to_mram_uint32_array
+ * @brief Copy data to the MRAM of a DPU.
+ * @param dpu_set the identifier of the DPU set.
+ * @param symbol_name the name of the DPU symbol of the pointer to MRAM destination.
+ * @param src the host buffer containing the data to copy.
+ * @param length the number of elements in the array.
+ */
+void dpu_copy_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
+  mram_addr_t p_array;
+  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                      // Get address of array in MRAM.
+  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_array, (const uint8_t *)src, length * sizeof(uint32_t), 0)); // Copy data.
+}
+
+/**
+ * @fn dpu_copy_from_mram_uint32_array
+ * @brief Copy data from the MRAM of a DPU.
+ * @param dpu_set the identifier of the DPU set.
+ * @param symbol_name the name of the DPU symbol of the pointer to MRAM destination.
+ * @param dst the host buffer where the data is copied.
+ * @param length the number of elements in the array.
+ */
+void dpu_copy_from_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst, uint32_t length) {
+  mram_addr_t p_array;
+  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                  // Get address of array in MRAM.
+  DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, (uint8_t *)dst, p_array, length * sizeof(uint32_t), 0)); // Copy data.
+}
+
+/**
+ * @fn dpu_copy_to_uint32
+ * @brief Copy data from the Host memory buffer to one the DPU memories.
+ * @param dpu_set the identifier of the DPU set
+ * @param symbol_name the name of the DPU symbol where to copy the data
+ * @param src the host buffer containing the data to copy
+ */
+void dpu_copy_to_uint32(struct dpu_set_t dpu, const char *symbol_name, uint32_t src) {
+  DPU_ASSERT(dpu_copy_to(dpu, symbol_name, 0, &src, sizeof(uint32_t)));
+}
+
+/**
+ * @fn dpu_copy_from_uint32
+ * @brief Copy data from the Host memory buffer to one the DPU memories.
+ * @param dpu_set the identifier of the DPU set
+ * @param symbol_name the name of the DPU symbol where to copy the data
+ * @param dst the host buffer where the data is copied
+ */
+void dpu_copy_from_uint32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst) {
+  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, dst, sizeof(uint32_t)));
+}
+
 // Parse CLI args and options.
 void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **file) {
   bool is_prt_set = false;
@@ -189,7 +264,7 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
   return coo;
 }
 
-// Partition COO matrix into n COO matrices by col, or by row, or both (2D).
+// Partition COO matrix into n COO matrices by col, or by row, or both (2D). Assumes n is even.
 struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt) {
 
   struct COOMatrix *prts = malloc(n * sizeof(struct COOMatrix));
@@ -198,34 +273,43 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
   for (int i = 0; i < n; ++i)
     prts[i].numNonzeros = 0;
 
+  uint32_t numRows = coo.numRows;
+  uint32_t numCols = coo.numCols;
   uint32_t rowDiv = 1;
   uint32_t colDiv = 1;
 
   // Determine numRows, numCols, and numNonZeros per partition.
   switch (prt) {
   case row:
-    rowDiv = n; // n assumed to be even.
-    for (int i = 0; i < coo.numNonzeros; ++i)
-      prts[coo.rowIdxs[i] % n].numNonzeros++;
+    numRows /= n;
+    for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+      uint32_t rowIdx = coo.rowIdxs[i];
+      prts[rowIdx / numRows].numNonzeros++;
+    }
     break;
 
   case col:
-    colDiv = n; // n assumed to be even.
-    for (int i = 0; i < coo.numNonzeros; ++i)
-      prts[coo.colIdxs[i] % n].numNonzeros++;
+    numCols /= n;
+    for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+      uint32_t colIdx = coo.colIdxs[i];
+      prts[colIdx / numCols].numNonzeros++;
+    }
     break;
 
   case _2D:
     // Find the two nearest factors of n.
-    rowDiv = (int)sqrt(n);
+    rowDiv = (uint32_t)sqrt(n);
     while (n % rowDiv != 0)
       rowDiv--;
     colDiv = n / rowDiv;
 
-    for (int i = 0; i < coo.numNonzeros; ++i) {
-      uint32_t pRow = coo.rowIdxs[i] % rowDiv; // Partition row index.
-      uint32_t pCol = coo.colIdxs[i] % colDiv; // Partition col index.
-      uint32_t p = pRow * colDiv + pCol;       // col-major index of coo.
+    numRows /= rowDiv;
+    numCols /= colDiv;
+
+    for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+      uint32_t pRow = coo.rowIdxs[i] / numRows; // Partition row index.
+      uint32_t pCol = coo.colIdxs[i] / numCols; // Partition col index.
+      uint32_t p = pRow * colDiv + pCol;        // col-major index of coo.
       prts[p].numNonzeros++;
     }
 
@@ -233,28 +317,28 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
   }
 
   // Populate COO partitions.
-  for (int i = 0; i < n; ++i) {
-    prts[i].numRows = coo.numRows / rowDiv;
-    prts[i].numCols = coo.numCols / colDiv;
+  for (uint32_t i = 0; i < n; ++i) {
+    prts[i].numRows = numRows;
+    prts[i].numCols = numCols;
     prts[i].rowIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
     prts[i].colIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
-    prts[i].numNonzeros = 0; // We'll reuse as index to appending data.
+    prts[i].numNonzeros = 0; // We'll reuse as index when appending data.
   }
 
   // Bin row and col pairs.
-  for (int i = 0; i < coo.numNonzeros; ++i) {
+  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
     uint32_t rowIdx = coo.rowIdxs[i];
     uint32_t colIdx = coo.colIdxs[i];
 
     uint32_t p;
 
-    if (prt == row) {
-      p = rowIdx % n;
-    } else if (prt == col) {
-      p = colIdx % n;
-    } else if (prt == _2D) {
-      uint32_t pRow = coo.rowIdxs[i] % rowDiv;
-      uint32_t pCol = coo.colIdxs[i] % colDiv;
+    if (prt == row)
+      p = rowIdx / numRows;
+    else if (prt == col)
+      p = colIdx / numCols;
+    else if (prt == _2D) {
+      uint32_t pRow = coo.rowIdxs[i] / numRows;
+      uint32_t pCol = coo.colIdxs[i] / numCols;
       p = pRow * colDiv + pCol;
     }
 
@@ -272,22 +356,28 @@ struct CSRMatrix coo_to_csr(struct COOMatrix coo) {
 
   struct CSRMatrix csr;
 
-  // Initialize fields
+  // Initialize fields.
   csr.numRows = coo.numRows;
   csr.numCols = coo.numCols;
   csr.numNonzeros = coo.numNonzeros;
-  csr.rowPtrs = malloc((csr.numRows + 1) * sizeof(uint32_t));
+  csr.rowPtrs = calloc((csr.numRows + 1), sizeof(uint32_t));
   csr.colIdxs = malloc(csr.numNonzeros * sizeof(uint32_t));
 
-  // Histogram rowIdxs
-  memset(csr.rowPtrs, 0, (csr.numRows + 1) * sizeof(uint32_t));
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+  // Find smallest rowIdx to use as offset. Usually it's the first rowIdx, if data is sorted.
+  uint32_t idxOffset = coo.rowIdxs[0];
+  for (uint32_t i = 1; i < coo.numNonzeros; ++i) {
     uint32_t rowIdx = coo.rowIdxs[i];
+    if (rowIdx < idxOffset)
+      idxOffset = rowIdx;
+  }
+
+  // Histogram rowIdxs.
+  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+    uint32_t rowIdx = coo.rowIdxs[i] - idxOffset;
     csr.rowPtrs[rowIdx]++;
   }
 
-  exit(1);
-  // Prefix sum rowPtrs
+  // Prefix sum rowPtrs.
   uint32_t sumBeforeNextRow = 0;
   for (uint32_t rowIdx = 0; rowIdx < csr.numRows; ++rowIdx) {
     uint32_t sumBeforeRow = sumBeforeNextRow;
@@ -296,17 +386,16 @@ struct CSRMatrix coo_to_csr(struct COOMatrix coo) {
   }
   csr.rowPtrs[csr.numRows] = sumBeforeNextRow;
 
-  // Bin the nonzeros
+  // Bin the nonzeros.
   for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx = coo.rowIdxs[i];
+    uint32_t rowIdx = coo.rowIdxs[i] - idxOffset;
     uint32_t nnzIdx = csr.rowPtrs[rowIdx]++;
     csr.colIdxs[nnzIdx] = coo.colIdxs[i];
   }
 
-  // Restore rowPtrs
-  for (uint32_t rowIdx = csr.numRows - 1; rowIdx > 0; --rowIdx) {
+  // Restore rowPtrs.
+  for (uint32_t rowIdx = csr.numRows - 1; rowIdx > 0; --rowIdx)
     csr.rowPtrs[rowIdx] = csr.rowPtrs[rowIdx - 1];
-  }
   csr.rowPtrs[0] = 0;
 
   return csr;
@@ -345,81 +434,6 @@ void free_csr_matrix(struct CSRMatrix csr) {
 void free_csc_matrix(struct CSCMatrix csc) {
   free(csc.colPtrs);
   free(csc.rowIdxs);
-}
-
-/**
- * @fn dpu_insert_to_mram_uint32_array
- * @brief Inserts data into the MRAM of a DPU at the last used MRAM address.
- * @param dpu_set the identifier of the DPU set.
- * @param symbol_name the name of the DPU symbol where to copy the pointer of the data.
- * @param src the host buffer containing the data to copy.
- * @param length the number of elements in the array.
- */
-void dpu_insert_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
-  // Get end of used MRAM pointer.
-  mram_addr_t p_used_mram_end;
-  DPU_ASSERT(dpu_copy_from(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
-
-  // Set the array pointer as the previous pointer.
-  DPU_ASSERT(dpu_copy_to(dpu, symbol_name, 0, &p_used_mram_end, sizeof(mram_addr_t)));
-
-  // Copy the data to MRAM.
-  size_t size = length * sizeof(uint32_t);
-  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size, 0));
-
-  // Increment end of used MRAM pointer.
-  p_used_mram_end += size;
-  DPU_ASSERT(dpu_copy_to(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
-}
-
-/**
- * @fn dpu_copy_to_mram_uint32_array
- * @brief Copy data to the MRAM of a DPU.
- * @param dpu_set the identifier of the DPU set.
- * @param symbol_name the name of the DPU symbol of the pointer to MRAM destination.
- * @param src the host buffer containing the data to copy.
- * @param length the number of elements in the array.
- */
-void dpu_copy_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
-  mram_addr_t p_array;
-  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                      // Get address of array in MRAM.
-  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_array, (const uint8_t *)src, length * sizeof(uint32_t), 0)); // Copy data.
-}
-
-/**
- * @fn dpu_copy_from_mram_uint32_array
- * @brief Copy data from the MRAM of a DPU.
- * @param dpu_set the identifier of the DPU set.
- * @param symbol_name the name of the DPU symbol of the pointer to MRAM destination.
- * @param dst the host buffer where the data is copied.
- * @param length the number of elements in the array.
- */
-void dpu_copy_from_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst, uint32_t length) {
-  mram_addr_t p_array;
-  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                  // Get address of array in MRAM.
-  DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, (uint8_t *)dst, p_array, length * sizeof(uint32_t), 0)); // Copy data.
-}
-
-/**
- * @fn dpu_copy_to_uint32
- * @brief Copy data from the Host memory buffer to one the DPU memories.
- * @param dpu_set the identifier of the DPU set
- * @param symbol_name the name of the DPU symbol where to copy the data
- * @param src the host buffer containing the data to copy
- */
-void dpu_copy_to_uint32(struct dpu_set_t dpu, const char *symbol_name, uint32_t src) {
-  DPU_ASSERT(dpu_copy_to(dpu, symbol_name, 0, &src, sizeof(uint32_t)));
-}
-
-/**
- * @fn dpu_copy_from_uint32
- * @brief Copy data from the Host memory buffer to one the DPU memories.
- * @param dpu_set the identifier of the DPU set
- * @param symbol_name the name of the DPU symbol where to copy the data
- * @param dst the host buffer where the data is copied
- */
-void dpu_copy_from_uint32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst) {
-  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, dst, sizeof(uint32_t)));
 }
 
 // Each DPU gets chunks of 32 nodes, distributed as evenly as possible.
@@ -635,9 +649,6 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t totalChunk
 
   // Free resources.
   free(nextFrontier);
-}
-
-void bfs_edge(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t totalChunks) {
 }
 
 void print_node_levels(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t numNodes) {
