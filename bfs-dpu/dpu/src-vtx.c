@@ -13,12 +13,12 @@
 #define ROUND_UP_TO_MULTIPLE_OF_32(x) ((((x)-1) / 32 + 1) * 32)
 
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
-__host uint32_t dpuIdx;                                          // DPU index.
+__host uint32_t dpu_idx;                                         // DPU index.
 
-__host uint32_t numNodes;              // Number of nodes for this DPU.
-__host uint32_t numNeighbors;          // Number of neighbors for this DPU.
-__host uint32_t nodeOffset;            // Offset of the first nodePtr relative to the global CSR.
-__host __mram_ptr uint32_t *nodePtrs;  // DPU's share of nodePtrs.
+__host uint32_t num_nodes;             // Number of nodes for this DPU.
+__host uint32_t num_neighbors;         // Number of neighbors for this DPU.
+__host uint32_t node_offset;           // Offset of the first nodePtr relative to the global CSR.
+__host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
 __host __mram_ptr uint32_t *neighbors; // DPU's share of neighbors.
 
 __host uint32_t currentLevel;  // Current level in the BFS. Used to update the nodeLevel bitarray.
@@ -75,13 +75,13 @@ int main() {
       if (f & 1 << b % 32) {
         uint32_t node = c * 32 + b;
 
-        // Get nodePtrs of this node.
-        uint32_t from = nodePtrs[node] - origin;
+        // Get node_ptrs of this node.
+        uint32_t from = node_ptrs[node] - origin;
         uint32_t to;
-        if (node < numNodes - 1)
-          to = nodePtrs[node + 1] - origin;
+        if (node < num_nodes - 1)
+          to = node_ptrs[node + 1] - origin;
         else
-          to = numNeighbors;
+          to = num_neighbors;
 
         // For each not visited neighbor of this node.
         for (uint32_t n = from; n < to; ++n) {

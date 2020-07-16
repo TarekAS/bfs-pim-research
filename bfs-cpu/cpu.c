@@ -14,116 +14,116 @@
 #define PRINT_STATUS(status) \
   fprintf(stderr, "Status: %s\n", dpu_api_status_to_string(status))
 
-struct COOMatrix {
-  uint32_t numRows;
-  uint32_t numCols;
-  uint32_t numNonzeros;
-  uint32_t *rowIdxs;
-  uint32_t *colIdxs;
+struct COO {
+  uint32_t num_rows;
+  uint32_t num_cols;
+  uint32_t num_nonzeros;
+  uint32_t *row_idxs;
+  uint32_t *col_idxs;
 };
 
-struct CSRMatrix {
-  uint32_t numRows;
-  uint32_t numCols;
-  uint32_t numNonzeros;
-  uint32_t *rowPtrs;
-  uint32_t *colIdxs;
+struct CSR {
+  uint32_t num_rows;
+  uint32_t num_cols;
+  uint32_t num_nonzeros;
+  uint32_t *row_ptrs;
+  uint32_t *col_idxs;
 };
 
 uint32_t *nodeLevels;
 
 // Reads a coo-formated file into memory.
-struct COOMatrix read_coo_matrix(char *file) {
+struct COO read_coo_matrix(char *file) {
 
   PRINT_INFO("Loading COO-formated graph from %s.", file);
 
-  struct COOMatrix coo;
+  struct COO coo;
 
   // Initialize fields.
   FILE *fp = fopen(file, "r");
-  fscanf(fp, "%u", &coo.numRows);
-  fscanf(fp, "%u", &coo.numCols);
-  fscanf(fp, "%u", &coo.numNonzeros);
+  fscanf(fp, "%u", &coo.num_rows);
+  fscanf(fp, "%u", &coo.num_cols);
+  fscanf(fp, "%u", &coo.num_nonzeros);
 
-  if (coo.numRows % 2 == 1) {
+  if (coo.num_rows % 2 == 1) {
     PRINT_WARNING("Number of rows must be even. Padding with an extra row.");
-    coo.numRows++;
+    coo.num_rows++;
   }
-  if (coo.numCols % 2 == 1) {
+  if (coo.num_cols % 2 == 1) {
     PRINT_WARNING("Number of columns must be even. Padding with an extra column.");
-    coo.numCols++;
+    coo.num_cols++;
   }
 
-  coo.rowIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
-  coo.colIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
+  coo.row_idxs = malloc(coo.num_nonzeros * sizeof(uint32_t));
+  coo.col_idxs = malloc(coo.num_nonzeros * sizeof(uint32_t));
 
-  PRINT_INFO("Reading COO-formated matrix - %u rows, %u columns, %u nonzeros.", coo.numRows, coo.numCols, coo.numNonzeros);
+  PRINT_INFO("Reading COO-formated matrix - %u rows, %u columns, %u nonzeros.", coo.num_rows, coo.num_cols, coo.num_nonzeros);
 
   // Read nonzeros.
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
+  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
     uint32_t rowIdx;
     uint32_t colIdx;
     fscanf(fp, "%u", &rowIdx);
     fscanf(fp, "%u", &colIdx);
-    coo.rowIdxs[i] = rowIdx;
-    coo.colIdxs[i] = colIdx;
+    coo.row_idxs[i] = rowIdx;
+    coo.col_idxs[i] = colIdx;
   }
 
   return coo;
 }
 
 // Converts COO matrix to CSR format.
-struct CSRMatrix coo_to_csr(struct COOMatrix coo) {
+struct CSR coo_to_csr(struct COO coo) {
 
-  struct CSRMatrix csr;
+  struct CSR csr;
 
   // Initialize fields
-  csr.numRows = coo.numRows;
-  csr.numCols = coo.numCols;
-  csr.numNonzeros = coo.numNonzeros;
-  csr.rowPtrs = malloc((csr.numRows + 1) * sizeof(uint32_t));
-  csr.colIdxs = malloc(csr.numNonzeros * sizeof(uint32_t));
+  csr.num_rows = coo.num_rows;
+  csr.num_cols = coo.num_cols;
+  csr.num_nonzeros = coo.num_nonzeros;
+  csr.row_ptrs = malloc((csr.num_rows + 1) * sizeof(uint32_t));
+  csr.col_idxs = malloc(csr.num_nonzeros * sizeof(uint32_t));
 
   // Histogram rowIdxs
-  memset(csr.rowPtrs, 0, (csr.numRows + 1) * sizeof(uint32_t));
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx = coo.rowIdxs[i];
-    csr.rowPtrs[rowIdx]++;
+  memset(csr.row_ptrs, 0, (csr.num_rows + 1) * sizeof(uint32_t));
+  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    uint32_t rowIdx = coo.row_idxs[i];
+    csr.row_ptrs[rowIdx]++;
   }
 
   // Prefix sum rowPtrs
   uint32_t sumBeforeNextRow = 0;
-  for (uint32_t rowIdx = 0; rowIdx < csr.numRows; ++rowIdx) {
+  for (uint32_t rowIdx = 0; rowIdx < csr.num_rows; ++rowIdx) {
     uint32_t sumBeforeRow = sumBeforeNextRow;
-    sumBeforeNextRow += csr.rowPtrs[rowIdx];
-    csr.rowPtrs[rowIdx] = sumBeforeRow;
+    sumBeforeNextRow += csr.row_ptrs[rowIdx];
+    csr.row_ptrs[rowIdx] = sumBeforeRow;
   }
-  csr.rowPtrs[csr.numRows] = sumBeforeNextRow;
+  csr.row_ptrs[csr.num_rows] = sumBeforeNextRow;
 
   // Bin the nonzeros
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx = coo.rowIdxs[i];
-    uint32_t nnzIdx = csr.rowPtrs[rowIdx]++;
-    csr.colIdxs[nnzIdx] = coo.colIdxs[i];
+  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    uint32_t rowIdx = coo.row_idxs[i];
+    uint32_t nnzIdx = csr.row_ptrs[rowIdx]++;
+    csr.col_idxs[nnzIdx] = coo.col_idxs[i];
   }
 
   // Restore rowPtrs
-  for (uint32_t rowIdx = csr.numRows - 1; rowIdx > 0; --rowIdx) {
-    csr.rowPtrs[rowIdx] = csr.rowPtrs[rowIdx - 1];
+  for (uint32_t rowIdx = csr.num_rows - 1; rowIdx > 0; --rowIdx) {
+    csr.row_ptrs[rowIdx] = csr.row_ptrs[rowIdx - 1];
   }
-  csr.rowPtrs[0] = 0;
+  csr.row_ptrs[0] = 0;
 
   return csr;
 }
 
-void free_coo_matrix(struct COOMatrix coo) {
-  free(coo.rowIdxs);
-  free(coo.colIdxs);
+void free_coo(struct COO coo) {
+  free(coo.row_idxs);
+  free(coo.col_idxs);
 }
 
-void free_csr_matrix(struct CSRMatrix csr) {
-  free(csr.rowPtrs);
-  free(csr.colIdxs);
+void free_csr(struct CSR csr) {
+  free(csr.row_ptrs);
+  free(csr.col_idxs);
 }
 
 struct queue {
@@ -278,26 +278,26 @@ void printQueue(struct queue *q) {
 int main() {
 
   // Load coo-matrix from file and convert to csr.
-  struct COOMatrix coo = read_coo_matrix("data/loc-gowalla_edges.txt");
-  struct CSRMatrix csr = coo_to_csr(coo);
+  struct COO coo = read_coo_matrix("data/loc-gowalla_edges.txt");
+  struct CSR csr = coo_to_csr(coo);
 
-  nodeLevels = calloc(csr.numRows, sizeof(uint32_t));
+  nodeLevels = calloc(csr.num_rows, sizeof(uint32_t));
 
-  struct Graph *graph = createGraph(csr.numRows);
+  struct Graph *graph = createGraph(csr.num_rows);
 
-  for (int node = 0; node < csr.numRows; ++node) {
-    uint32_t from = csr.rowPtrs[node];
-    uint32_t to = csr.rowPtrs[node + 1];
+  for (int node = 0; node < csr.num_rows; ++node) {
+    uint32_t from = csr.row_ptrs[node];
+    uint32_t to = csr.row_ptrs[node + 1];
 
     for (int n = from; n < to; ++n) {
-      uint32_t nb = csr.colIdxs[n]; // neighbor.
+      uint32_t nb = csr.col_idxs[n]; // neighbor.
       addEdge(graph, node, nb);
     }
   }
 
   bfs(graph, 0);
 
-  for (uint32_t node = 0; node < csr.numRows; ++node) {
+  for (uint32_t node = 0; node < csr.num_rows; ++node) {
     uint32_t level = nodeLevels[node];
     if (node != 0 && level == 0) // Filters out "padded" rows.
       continue;
@@ -305,8 +305,8 @@ int main() {
   }
 
   free(nodeLevels);
-  free_coo_matrix(coo);
-  free_csr_matrix(csr);
+  free_coo(coo);
+  free_csr(csr);
 
   return 0;
 }

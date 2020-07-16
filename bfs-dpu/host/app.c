@@ -27,45 +27,45 @@ enum Algorithm {
 };
 
 enum Partition {
-  row = 0,
-  col = 1,
+  Row = 0,
+  Col = 1,
   _2D = 2,
 };
 
-struct COOMatrix {
-  uint32_t numRows;
-  uint32_t numCols;
-  uint32_t numNonzeros;
-  uint32_t *rowIdxs;
-  uint32_t *colIdxs;
+struct COO {
+  uint32_t num_rows;
+  uint32_t num_cols;
+  uint32_t num_nonzeros;
+  uint32_t *row_idxs;
+  uint32_t *col_idxs;
 };
 
-struct CSRMatrix {
-  uint32_t numRows;
-  uint32_t numCols;
-  uint32_t numNonzeros;
-  uint32_t rowOffset;
-  uint32_t *rowPtrs;
-  uint32_t *colIdxs;
+struct CSR {
+  uint32_t num_rows;
+  uint32_t num_cols;
+  uint32_t num_nonzeros;
+  uint32_t row_offset;
+  uint32_t *row_ptrs;
+  uint32_t *col_idxs;
 };
 
-struct CSCMatrix {
-  uint32_t numRows;
-  uint32_t numCols;
-  uint32_t numNonzeros;
-  uint32_t *colPtrs;
-  uint32_t *rowIdxs;
+struct CSC {
+  uint32_t num_rows;
+  uint32_t num_cols;
+  uint32_t num_nonzeros;
+  uint32_t *col_ptrs;
+  uint32_t *row_idxs;
 };
 
 /**
- * @fn dpu_insert_to_mram_uint32_array
+ * @fn dpu_insert_mram_array_u32
  * @brief Inserts data into the MRAM of a DPU at the last used MRAM address.
  * @param dpu_set the identifier of the DPU set.
  * @param symbol_name the name of the DPU symbol where to copy the pointer of the data.
  * @param src the host buffer containing the data to copy.
  * @param length the number of elements in the array.
  */
-void dpu_insert_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
+void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
   // Get end of used MRAM pointer.
   mram_addr_t p_used_mram_end;
   DPU_ASSERT(dpu_copy_from(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
@@ -83,52 +83,52 @@ void dpu_insert_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_na
 }
 
 /**
- * @fn dpu_copy_to_mram_uint32_array
+ * @fn dpu_set_mram_array_u32
  * @brief Copy data to the MRAM of a DPU.
  * @param dpu_set the identifier of the DPU set.
  * @param symbol_name the name of the DPU symbol of the pointer to MRAM destination.
  * @param src the host buffer containing the data to copy.
  * @param length the number of elements in the array.
  */
-void dpu_copy_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
+void dpu_set_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
   mram_addr_t p_array;
   DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                      // Get address of array in MRAM.
   DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_array, (const uint8_t *)src, length * sizeof(uint32_t), 0)); // Copy data.
 }
 
 /**
- * @fn dpu_copy_from_mram_uint32_array
+ * @fn dpu_get_mram_array_u32
  * @brief Copy data from the MRAM of a DPU.
  * @param dpu_set the identifier of the DPU set.
  * @param symbol_name the name of the DPU symbol of the pointer to MRAM destination.
  * @param dst the host buffer where the data is copied.
  * @param length the number of elements in the array.
  */
-void dpu_copy_from_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst, uint32_t length) {
+void dpu_get_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst, uint32_t length) {
   mram_addr_t p_array;
   DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                  // Get address of array in MRAM.
   DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, (uint8_t *)dst, p_array, length * sizeof(uint32_t), 0)); // Copy data.
 }
 
 /**
- * @fn dpu_copy_to_uint32
+ * @fn dpu_set_u32
  * @brief Copy data from the Host memory buffer to one the DPU memories.
  * @param dpu_set the identifier of the DPU set
  * @param symbol_name the name of the DPU symbol where to copy the data
  * @param src the host buffer containing the data to copy
  */
-void dpu_copy_to_uint32(struct dpu_set_t dpu, const char *symbol_name, uint32_t src) {
+void dpu_set_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t src) {
   DPU_ASSERT(dpu_copy_to(dpu, symbol_name, 0, &src, sizeof(uint32_t)));
 }
 
 /**
- * @fn dpu_copy_from_uint32
+ * @fn dpu_get_u32
  * @brief Copy data from the Host memory buffer to one the DPU memories.
  * @param dpu_set the identifier of the DPU set
  * @param symbol_name the name of the DPU symbol where to copy the data
  * @param dst the host buffer where the data is copied
  */
-void dpu_copy_from_uint32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst) {
+void dpu_get_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst) {
   DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, dst, sizeof(uint32_t)));
 }
 
@@ -150,11 +150,11 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       if (strcmp(optarg, "src") == 0) {
         *alg = SrcVtx;
         if (!is_prt_set)
-          *prt = row;
+          *prt = Row;
       } else if (strcmp(optarg, "dst") == 0) {
         *alg = DstVtx;
         if (!is_prt_set)
-          *prt = col;
+          *prt = Col;
       } else if (strcmp(optarg, "edge") == 0) {
         *alg = Edge;
         if (!is_prt_set)
@@ -166,9 +166,9 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       break;
     case 'p':
       if (strcmp(optarg, "row") == 0)
-        *prt = row;
+        *prt = Row;
       else if (strcmp(optarg, "col") == 0)
-        *prt = col;
+        *prt = Col;
       else if (strcmp(optarg, "2d") == 0)
         *prt = _2D;
       else {
@@ -196,7 +196,7 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
 
 // Load coo-formated file into memory.
 // Pads nodes to multiple of lcm of 32 and n, and to a minimum of n * 32.
-struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
+struct COO load_coo(char *file, uint32_t n) {
 
   if (access(file, F_OK) == -1) {
     PRINT_ERROR("Could not find file %s.", file);
@@ -204,24 +204,24 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
   }
 
   PRINT_INFO("Loading COO-formated graph from %s.", file);
-  struct COOMatrix coo;
+  struct COO coo;
 
   // Initialize COO from file.
-  uint32_t nodes = 0;
-  uint32_t edges = 0;
+  uint32_t num_nodes = 0;
+  uint32_t num_edges = 0;
 
   FILE *fp = fopen(file, "r");
-  fscanf(fp, "%u", &nodes);
-  fscanf(fp, "%u", &edges);
-  coo.numNonzeros = edges;
-  coo.rowIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
-  coo.colIdxs = malloc(coo.numNonzeros * sizeof(uint32_t));
+  fscanf(fp, "%u", &num_nodes);
+  fscanf(fp, "%u", &num_edges);
+  coo.num_nonzeros = num_edges;
+  coo.row_idxs = malloc(num_edges * sizeof(uint32_t));
+  coo.col_idxs = malloc(num_edges * sizeof(uint32_t));
 
   // Pad number of nodes to a minimum of n * 32.
   uint32_t min = n * 32;
-  if (nodes < min) {
+  if (num_nodes < min) {
     PRINT_WARNING("Number of nodes too low. Setting number of nodes to %d.", min);
-    nodes = min;
+    num_nodes = min;
   }
 
   // Find Least Common Multiple of n and 32.
@@ -236,29 +236,29 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
     }
 
   // Pad nodes to multiple of LCM.
-  uint32_t padding = lcm - nodes % lcm;
+  uint32_t padding = lcm - num_nodes % lcm;
   if (padding != 0) {
     PRINT_WARNING("Number of nodes must be multiple of %d. Padding with %d extra nodes.", lcm, padding);
-    nodes += padding;
+    num_nodes += padding;
   }
 
-  coo.numRows = nodes;
-  coo.numCols = nodes;
+  coo.num_rows = num_nodes;
+  coo.num_cols = num_nodes;
 
   // Read nonzeros.
-  PRINT_INFO("Reading COO-formated graph - %u nodes, %u edges.", nodes, edges);
+  PRINT_INFO("Reading COO-formated graph - %u nodes, %u edges.", num_nodes, num_edges);
 
-  uint32_t rowIdx, colIdx;
-  fscanf(fp, "%u %u%*[^\n]\n", &rowIdx, &colIdx); // Read first 2 integers of each line.
+  uint32_t row_idx, col_idx;
+  fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx); // Read first 2 integers of each line.
 
-  uint32_t nodeOffset = rowIdx; // Guarantee 0-indexed COO.
-  coo.rowIdxs[0] = rowIdx - nodeOffset;
-  coo.colIdxs[0] = colIdx - nodeOffset;
+  uint32_t row_offset = row_idx; // Guarantee 0-indexed COO.
+  coo.row_idxs[0] = row_idx - row_offset;
+  coo.col_idxs[0] = col_idx - row_offset;
 
-  for (uint32_t i = 1; i < coo.numNonzeros; ++i) {
-    fscanf(fp, "%u %u%*[^\n]\n", &rowIdx, &colIdx);
-    coo.rowIdxs[i] = rowIdx - nodeOffset;
-    coo.colIdxs[i] = colIdx - nodeOffset;
+  for (uint32_t i = 1; i < num_edges; ++i) {
+    fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx);
+    coo.row_idxs[i] = row_idx - row_offset;
+    coo.col_idxs[i] = col_idx - row_offset;
   }
   fclose(fp);
 
@@ -266,52 +266,52 @@ struct COOMatrix load_coo_matrix(char *file, uint32_t n) {
 }
 
 // Partition COO matrix into n COO matrices by col, or by row, or both (2D). Assumes n is even.
-struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt) {
+struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 
-  struct COOMatrix *prts = malloc(n * sizeof(struct COOMatrix));
+  struct COO *prts = malloc(n * sizeof(struct COO));
 
   // Initialize numNonzeros.
   for (int i = 0; i < n; ++i)
-    prts[i].numNonzeros = 0;
+    prts[i].num_nonzeros = 0;
 
-  uint32_t numRows = coo.numRows;
-  uint32_t numCols = coo.numCols;
-  uint32_t rowDiv = 1;
-  uint32_t colDiv = 1;
+  uint32_t num_rows = coo.num_rows;
+  uint32_t num_cols = coo.num_cols;
+  uint32_t row_div = 1;
+  uint32_t col_div = 1;
 
-  // Determine numRows, numCols, and numNonZeros per partition.
+  // Determine num_rows, num_cols, and numNonZeros per partition.
   switch (prt) {
-  case row:
-    numRows /= n;
-    for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-      uint32_t rowIdx = coo.rowIdxs[i];
-      prts[rowIdx / numRows].numNonzeros++;
+  case Row:
+    num_rows /= n;
+    for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+      uint32_t row_idx = coo.row_idxs[i];
+      prts[row_idx / num_rows].num_nonzeros++;
     }
     break;
 
-  case col:
-    numCols /= n;
-    for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-      uint32_t colIdx = coo.colIdxs[i];
-      prts[colIdx / numCols].numNonzeros++;
+  case Col:
+    num_cols /= n;
+    for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+      uint32_t col_idx = coo.col_idxs[i];
+      prts[col_idx / num_cols].num_nonzeros++;
     }
     break;
 
   case _2D:
     // Find the two nearest factors of n.
-    rowDiv = (uint32_t)sqrt(n);
-    while (n % rowDiv != 0)
-      rowDiv--;
-    colDiv = n / rowDiv;
+    row_div = (uint32_t)sqrt(n);
+    while (n % row_div != 0)
+      row_div--;
+    col_div = n / row_div;
 
-    numRows /= rowDiv;
-    numCols /= colDiv;
+    num_rows /= row_div;
+    num_cols /= col_div;
 
-    for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-      uint32_t pRow = coo.rowIdxs[i] / numRows; // Partition row index.
-      uint32_t pCol = coo.colIdxs[i] / numCols; // Partition col index.
-      uint32_t p = pRow * colDiv + pCol;        // col-major index of coo.
-      prts[p].numNonzeros++;
+    for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+      uint32_t p_row = coo.row_idxs[i] / num_rows; // Partition row index.
+      uint32_t p_col = coo.col_idxs[i] / num_cols; // Partition col index.
+      uint32_t p = p_row * col_div + p_col;        // col-major index of coo.
+      prts[p].num_nonzeros++;
     }
 
     break;
@@ -319,238 +319,124 @@ struct COOMatrix *partition_coo(struct COOMatrix coo, int n, enum Partition prt)
 
   // Populate COO partitions.
   for (uint32_t i = 0; i < n; ++i) {
-    prts[i].numRows = numRows;
-    prts[i].numCols = numCols;
-    prts[i].rowIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
-    prts[i].colIdxs = malloc(prts[i].numNonzeros * sizeof(uint32_t));
-    prts[i].numNonzeros = 0; // We'll reuse as index when appending data.
+    prts[i].num_rows = num_rows;
+    prts[i].num_cols = num_cols;
+    prts[i].row_idxs = malloc(prts[i].num_nonzeros * sizeof(uint32_t));
+    prts[i].col_idxs = malloc(prts[i].num_nonzeros * sizeof(uint32_t));
+    prts[i].num_nonzeros = 0; // We'll reuse as index when appending data.
   }
 
   // Bin row and col pairs.
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx = coo.rowIdxs[i];
-    uint32_t colIdx = coo.colIdxs[i];
+  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    uint32_t row_idx = coo.row_idxs[i];
+    uint32_t col_idx = coo.col_idxs[i];
 
     uint32_t p;
 
-    if (prt == row)
-      p = rowIdx / numRows;
-    else if (prt == col)
-      p = colIdx / numCols;
+    if (prt == Row)
+      p = row_idx / num_rows;
+    else if (prt == Col)
+      p = col_idx / num_cols;
     else if (prt == _2D) {
-      uint32_t pRow = coo.rowIdxs[i] / numRows;
-      uint32_t pCol = coo.colIdxs[i] / numCols;
-      p = pRow * colDiv + pCol;
+      uint32_t p_row = coo.row_idxs[i] / num_rows;
+      uint32_t p_col = coo.col_idxs[i] / num_cols;
+      p = p_row * col_div + p_col;
     }
 
-    uint32_t idx = prts[p].numNonzeros;
-    prts[p].colIdxs[idx] = colIdx;
-    prts[p].rowIdxs[idx] = rowIdx;
-    prts[p].numNonzeros++;
+    uint32_t idx = prts[p].num_nonzeros;
+    prts[p].col_idxs[idx] = col_idx;
+    prts[p].row_idxs[idx] = row_idx;
+    prts[p].num_nonzeros++;
   }
 
   return prts;
 }
 
 // Converts COO matrix to CSR format.
-struct CSRMatrix coo_to_csr(struct COOMatrix coo) {
+struct CSR coo_to_csr(struct COO coo) {
 
-  struct CSRMatrix csr;
+  struct CSR csr;
 
   // Initialize fields.
-  csr.numRows = coo.numRows;
-  csr.numCols = coo.numCols;
-  csr.numNonzeros = coo.numNonzeros;
-  csr.rowPtrs = calloc((csr.numRows + 1), sizeof(uint32_t));
-  csr.colIdxs = malloc(csr.numNonzeros * sizeof(uint32_t));
+  csr.num_rows = coo.num_rows;
+  csr.num_cols = coo.num_cols;
+  csr.num_nonzeros = coo.num_nonzeros;
+  csr.row_ptrs = calloc((csr.num_rows + 1), sizeof(uint32_t));
+  csr.col_idxs = malloc(csr.num_nonzeros * sizeof(uint32_t));
 
-  // Find smallest rowIdx to use as offset. Usually it's the first rowIdx, if data is sorted.
-  uint32_t rowOffset = coo.rowIdxs[0];
-  for (uint32_t i = 1; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx = coo.rowIdxs[i];
-    if (rowIdx < rowOffset)
-      rowOffset = rowIdx;
+  // Find smallest row_idx to use as offset. Usually it's the first row_idx, if data is sorted.
+  uint32_t row_offset = coo.row_idxs[0];
+  for (uint32_t i = 1; i < coo.num_nonzeros; ++i) {
+    uint32_t row_idx = coo.row_idxs[i];
+    if (row_idx < row_offset)
+      row_offset = row_idx;
   }
-  csr.rowOffset = rowOffset;
+  csr.row_offset = row_offset;
 
-  // Histogram rowIdxs.
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx = coo.rowIdxs[i] - rowOffset;
-    csr.rowPtrs[rowIdx]++;
+  // Histogram row_idxs.
+  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    uint32_t row_idx = coo.row_idxs[i] - row_offset;
+    csr.row_ptrs[row_idx]++;
   }
 
   // Prefix sum rowPtrs.
-  uint32_t sumBeforeNextRow = 0;
-  for (uint32_t rowIdx = 0; rowIdx < csr.numRows; ++rowIdx) {
-    uint32_t sumBeforeRow = sumBeforeNextRow;
-    sumBeforeNextRow += csr.rowPtrs[rowIdx];
-    csr.rowPtrs[rowIdx] = sumBeforeRow;
+  uint32_t sum_before_next_row = 0;
+  for (uint32_t row_idx = 0; row_idx < csr.num_rows; ++row_idx) {
+    uint32_t sum_before_row = sum_before_next_row;
+    sum_before_next_row += csr.row_ptrs[row_idx];
+    csr.row_ptrs[row_idx] = sum_before_row;
   }
-  csr.rowPtrs[csr.numRows] = sumBeforeNextRow;
+  csr.row_ptrs[csr.num_rows] = sum_before_next_row;
 
   // Bin the nonzeros.
-  for (uint32_t i = 0; i < coo.numNonzeros; ++i) {
-    uint32_t rowIdx = coo.rowIdxs[i] - rowOffset;
-    uint32_t nnzIdx = csr.rowPtrs[rowIdx]++;
-    csr.colIdxs[nnzIdx] = coo.colIdxs[i];
+  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    uint32_t row_idx = coo.row_idxs[i] - row_offset;
+    uint32_t nnzIdx = csr.row_ptrs[row_idx]++;
+    csr.col_idxs[nnzIdx] = coo.col_idxs[i];
   }
 
   // Restore rowPtrs.
-  for (uint32_t rowIdx = csr.numRows - 1; rowIdx > 0; --rowIdx)
-    csr.rowPtrs[rowIdx] = csr.rowPtrs[rowIdx - 1];
-  csr.rowPtrs[0] = 0;
+  for (uint32_t row_idx = csr.num_rows - 1; row_idx > 0; --row_idx)
+    csr.row_ptrs[row_idx] = csr.row_ptrs[row_idx - 1];
+  csr.row_ptrs[0] = 0;
 
   return csr;
 }
 
 // Converts COO matrix to CSC format.
-struct CSCMatrix coo_to_csc(struct COOMatrix coo) {
+struct CSC coo_to_csc(struct COO coo) {
 
   // Transpose COO matrix.
-  struct COOMatrix cooTrs = coo;
-  cooTrs.colIdxs = coo.rowIdxs;
-  cooTrs.rowIdxs = coo.colIdxs;
-  cooTrs.numCols = coo.numRows;
-  cooTrs.numRows = coo.numCols;
+  struct COO coo_trs = {
+      .col_idxs = coo.row_idxs,
+      .row_idxs = coo.col_idxs,
+      .num_cols = coo.num_rows,
+      .num_rows = coo.num_cols};
 
-  struct CSRMatrix csrMatrix = coo_to_csr(cooTrs);
-  struct CSCMatrix csc = {
-      .colPtrs = csrMatrix.rowPtrs,
-      .rowIdxs = csrMatrix.colIdxs,
-      .numCols = csrMatrix.numCols,
-      .numRows = csrMatrix.numRows};
+  // Convert to CSR, then CSC.
+  struct CSR csr = coo_to_csr(coo_trs);
+  struct CSC csc = {
+      .col_ptrs = csr.row_ptrs,
+      .row_idxs = csr.col_idxs,
+      .num_cols = csr.num_cols,
+      .num_rows = csr.num_rows};
 
   return csc;
 }
 
-void free_coo_matrix(struct COOMatrix coo) {
-  free(coo.rowIdxs);
-  free(coo.colIdxs);
+void free_coo(struct COO coo) {
+  free(coo.row_idxs);
+  free(coo.col_idxs);
 }
 
-void free_csr_matrix(struct CSRMatrix csr) {
-  free(csr.rowPtrs);
-  free(csr.colIdxs);
+void free_csr(struct CSR csr) {
+  free(csr.row_ptrs);
+  free(csr.col_idxs);
 }
 
-void free_csc_matrix(struct CSCMatrix csc) {
-  free(csc.colPtrs);
-  free(csc.rowIdxs);
-}
-
-// Each DPU gets chunks of 32 nodes, distributed as evenly as possible.
-uint32_t chunkize_nodes(uint32_t numRows, uint32_t num_dpu, uint32_t **dpu_node_chunks) {
-  uint32_t totalChunks = (numRows + 31) / 32; // ceil.
-  uint32_t minChunksPerDPU = totalChunks / num_dpu;
-  uint32_t chunksRemainder = totalChunks % num_dpu;
-  uint32_t *chunksPerDPU = malloc(num_dpu * sizeof(uint32_t));
-  for (uint32_t i = 0; i < num_dpu; ++i)
-    if (i < chunksRemainder)
-      chunksPerDPU[i] = minChunksPerDPU + 1;
-    else
-      chunksPerDPU[i] = minChunksPerDPU;
-
-  // Node idxs for each DPU.
-  uint32_t *chunks = malloc((num_dpu + 1) * sizeof(uint32_t));
-  chunks[0] = 0;
-  for (uint32_t i = 1; i < num_dpu; ++i)
-    chunks[i] = chunks[i - 1] + chunksPerDPU[i - 1] * 32;
-  chunks[num_dpu] = numRows;
-
-  *dpu_node_chunks = chunks;
-
-  free(chunksPerDPU);
-  return totalChunks;
-}
-
-void populate_mram(struct dpu_set_t *set, struct dpu_set_t *dpu, struct CSRMatrix csr, uint32_t *dpu_node_chunks, uint32_t totalChunks) {
-
-  // Initialize nextFrontier.
-  uint32_t *nextFrontier = calloc(totalChunks, sizeof(uint32_t));
-  nextFrontier[0] = 1; // Set root node.
-
-  // Populate MRAM.
-  PRINT_INFO("Populating MRAM.");
-  dpu_copy_to_uint32(*set, "totalChunks", totalChunks);
-
-  uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-    uint32_t from = dpu_node_chunks[i];   // index of rowPtrs for this dpu.
-    uint32_t to = dpu_node_chunks[i + 1]; // index of rowPtrs for the next dpu.
-    uint32_t numNodes = to - from;
-    uint32_t numNeighbors = csr.rowPtrs[to] - csr.rowPtrs[from];
-
-    uint32_t nodeChunkFrom = from / 32;
-    uint32_t nodeChunkTo = (to + 31) / 32;            // ceil.
-    uint32_t numChunks = nodeChunkTo - nodeChunkFrom; // == chunksPerDPU[i]
-    uint32_t *nodePtrs = &csr.rowPtrs[from];
-    uint32_t origin = nodePtrs[0]; // index of first neighbor.
-    uint32_t *neighbors = &csr.colIdxs[origin];
-
-    PRINT_INFO("DPU %d: nodeChunks = [%u, %u[", i, nodeChunkFrom, nodeChunkTo);
-
-    dpu_copy_to_uint32(*dpu, "numNodes", numNodes);
-    dpu_copy_to_uint32(*dpu, "numNeighbors", numNeighbors);
-    dpu_copy_to_uint32(*dpu, "numChunks", numChunks);
-    dpu_copy_to_uint32(*dpu, "nodeChunkFrom", nodeChunkFrom);
-    dpu_copy_to_uint32(*dpu, "nodeChunkTo", nodeChunkTo);
-    dpu_copy_to_uint32(*dpu, "origin", origin);
-
-    dpu_insert_to_mram_uint32_array(*dpu, "nodePtrs", nodePtrs, numNodes);
-    dpu_insert_to_mram_uint32_array(*dpu, "neighbors", neighbors, numNeighbors);
-    dpu_insert_to_mram_uint32_array(*dpu, "nodeLevels", 0, numNodes);
-
-    dpu_insert_to_mram_uint32_array(*dpu, "visited", 0, totalChunks);
-    dpu_insert_to_mram_uint32_array(*dpu, "nextFrontier", nextFrontier, totalChunks);
-    dpu_insert_to_mram_uint32_array(*dpu, "currFrontier", 0, numChunks);
-  }
-
-  free(nextFrontier);
-}
-
-void populate_mram_csc(struct dpu_set_t *set, struct dpu_set_t *dpu, struct CSCMatrix csc, uint32_t *dpu_node_chunks, uint32_t totalChunks) {
-
-  // Initialize nextFrontier.
-  uint32_t *nextFrontier = calloc(totalChunks, sizeof(uint32_t));
-  nextFrontier[0] = 1; // Set root node.
-
-  // Populate MRAM.
-  PRINT_INFO("Populating MRAM.");
-  dpu_copy_to_uint32(*set, "totalChunks", totalChunks);
-
-  uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-    uint32_t from = dpu_node_chunks[i];   // index of rowPtrs for this dpu.
-    uint32_t to = dpu_node_chunks[i + 1]; // index of rowPtrs for the next dpu.
-    uint32_t numNodes = to - from;
-    uint32_t numNeighbors = csc.colPtrs[to] - csc.colPtrs[from];
-
-    uint32_t nodeChunkFrom = from / 32;
-    uint32_t nodeChunkTo = (to + 31) / 32;            // ceil.
-    uint32_t numChunks = nodeChunkTo - nodeChunkFrom; // == chunksPerDPU[i]
-    uint32_t *nodePtrs = &csc.colPtrs[from];
-    uint32_t origin = nodePtrs[0]; // index of first neighbor.
-    uint32_t *neighbors = &csc.rowIdxs[origin];
-
-    PRINT_INFO("DPU %d: nodeChunks = [%u, %u[", i, nodeChunkFrom, nodeChunkTo);
-
-    dpu_copy_to_uint32(*dpu, "numNodes", numNodes);
-    dpu_copy_to_uint32(*dpu, "numNeighbors", numNeighbors);
-    dpu_copy_to_uint32(*dpu, "numChunks", numChunks);
-    dpu_copy_to_uint32(*dpu, "nodeChunkFrom", nodeChunkFrom);
-    dpu_copy_to_uint32(*dpu, "nodeChunkTo", nodeChunkTo);
-    dpu_copy_to_uint32(*dpu, "origin", origin);
-
-    dpu_insert_to_mram_uint32_array(*dpu, "nodePtrs", nodePtrs, numNodes);
-    dpu_insert_to_mram_uint32_array(*dpu, "neighbors", neighbors, numNeighbors);
-    dpu_insert_to_mram_uint32_array(*dpu, "nodeLevels", 0, numNodes);
-
-    dpu_insert_to_mram_uint32_array(*dpu, "visited", 0, numChunks);
-    dpu_insert_to_mram_uint32_array(*dpu, "nextFrontier", 0, numChunks);
-    dpu_insert_to_mram_uint32_array(*dpu, "currFrontier", nextFrontier, totalChunks);
-  }
-
-  free(nextFrontier);
+void free_csc(struct CSC csc) {
+  free(csc.col_ptrs);
+  free(csc.row_idxs);
 }
 
 void bfs_src_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t totalChunks) {
@@ -570,7 +456,7 @@ void bfs_src_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t totalChunk
     // Get union of nextFrontiers.
     _DPU_FOREACH_I(set, dpu, i) {
 
-      dpu_copy_from_mram_uint32_array(dpu, "nextFrontier", nf_dpu, totalChunks);
+      dpu_get_mram_array_u32(dpu, "nextFrontier", nf_dpu, totalChunks);
       for (uint32_t c = 0; c < totalChunks; ++c) {
         nextFrontier[c] |= nf_dpu[c];
         if (nextFrontier[c] != 0)
@@ -589,9 +475,9 @@ void bfs_src_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t totalChunk
     ++currentLevel;
 
     // Update currentLevel and nextFrontier of DPUs.
-    dpu_copy_to_uint32(set, "currentLevel", currentLevel);
+    dpu_set_u32(set, "currentLevel", currentLevel);
     _DPU_FOREACH_I(set, dpu, i) {
-      dpu_copy_to_mram_uint32_array(dpu, "nextFrontier", nextFrontier, totalChunks);
+      dpu_set_mram_array_u32(dpu, "nextFrontier", nextFrontier, totalChunks);
     }
 
     // Clear nextFrontier.
@@ -620,9 +506,9 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t totalChunk
     int i = 0;
     _DPU_FOREACH_I(set, dpu, i) {
       uint32_t numChunks;
-      dpu_copy_from_uint32(dpu, "numChunks", &numChunks);
-      dpu_copy_from_mram_uint32_array(dpu, "nextFrontier",
-                                      &nextFrontier[writeIdx], numChunks);
+      dpu_get_u32(dpu, "numChunks", &numChunks);
+      dpu_get_mram_array_u32(dpu, "nextFrontier",
+                             &nextFrontier[writeIdx], numChunks);
       writeIdx += numChunks;
 
       // Get DPU logs.
@@ -643,9 +529,9 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t totalChunk
     ++currentLevel;
 
     // Update currentLevel and currentFrontier of DPUs.
-    dpu_copy_to_uint32(set, "currentLevel", currentLevel);
+    dpu_set_u32(set, "currentLevel", currentLevel);
     _DPU_FOREACH_I(set, dpu, i) {
-      dpu_copy_to_mram_uint32_array(dpu, "currFrontier", nextFrontier, totalChunks);
+      dpu_set_mram_array_u32(dpu, "currFrontier", nextFrontier, totalChunks);
     }
   }
 
@@ -661,8 +547,8 @@ void print_node_levels(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t numN
   int i = 0;
   _DPU_FOREACH_I(set, dpu, i) {
     uint32_t numNodes;
-    dpu_copy_from_uint32(dpu, "numNodes", &numNodes);
-    dpu_copy_from_mram_uint32_array(dpu, "nodeLevels", &nodeLevels[writeIdx], numNodes);
+    dpu_get_u32(dpu, "numNodes", &numNodes);
+    dpu_get_mram_array_u32(dpu, "nodeLevels", &nodeLevels[writeIdx], numNodes);
     writeIdx += numNodes;
   }
 
@@ -678,33 +564,34 @@ void print_node_levels(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t numN
   free(nodeLevels);
 }
 
-void bfs_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct COOMatrix *coo_prts, enum Partition prt) {
+void start_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct COO *coo_prts, enum Partition prt) {
   // Convert to CSR.
-  struct CSRMatrix *csr = malloc(num_dpu * sizeof(struct CSRMatrix));
+  struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
   for (int i = 0; i < num_dpu; ++i)
     csr[i] = coo_to_csr(coo_prts[i]);
 
+  // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
 
   uint32_t i = 0;
   _DPU_FOREACH_I(*set, *dpu, i) {
 
-    dpu_copy_to_uint32(*dpu, "dpuIdx", i);
+    dpu_set_u32(*dpu, "dpu_idx", i);
 
     // Copy CSR partition.
-    dpu_copy_to_uint32(*dpu, "numNodes", csr[i].numRows);
-    dpu_copy_to_uint32(*dpu, "numNeighbors", csr[i].numNonzeros);
-    dpu_copy_to_uint32(*dpu, "nodeOffset", csr[i].rowOffset);
-    dpu_insert_to_mram_uint32_array(*dpu, "nodePtrs", csr[i].rowPtrs, csr[i].numRows + 1);
-    dpu_insert_to_mram_uint32_array(*dpu, "neighbors", csr[i].colIdxs, csr[i].numNonzeros);
+    dpu_set_u32(*dpu, "num_nodes", csr[i].num_rows);
+    dpu_set_u32(*dpu, "num_neighbors", csr[i].num_nonzeros);
+    dpu_set_u32(*dpu, "node_offset", csr[i].row_offset);
+    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, csr[i].num_rows + 1);
+    dpu_insert_mram_array_u32(*dpu, "neighbors", csr[i].col_idxs, csr[i].num_nonzeros);
 
-    PRINT_INFO("dpuIdx = %u, numNodes = %u, numNeighbors = %u, nodeOffset = %u", i, csr[i].numRows, csr[i].numNonzeros, csr[i].rowOffset);
+    PRINT_INFO("dpu_idx = %u, num_nodes = %u, num_neighbors = %u, node_offset = %u",
+               i, csr[i].num_rows, csr[i].num_nonzeros, csr[i].row_offset);
 
-    // dpu_insert_to_mram_uint32_array(*dpu, "nodeLevels", 0, numNodes);
-
-    // dpu_insert_to_mram_uint32_array(*dpu, "visited", 0, totalChunks);
-    // dpu_insert_to_mram_uint32_array(*dpu, "nextFrontier", nextFrontier, totalChunks);
-    // dpu_insert_to_mram_uint32_array(*dpu, "currFrontier", 0, numChunks);
+    // dpu_insert_mram_array_u32(*dpu, "node_levels", 0, num_nodes);
+    // dpu_insert_mram_array_u32(*dpu, "visited", 0, totalChunks);
+    // dpu_insert_mram_array_u32(*dpu, "next_frontier", next_frontier, totalChunks);
+    // dpu_insert_mram_array_u32(*dpu, "curr_frontier", 0, numChunks);
   }
 }
 
@@ -712,32 +599,32 @@ int main(int argc, char **argv) {
 
   int num_dpu = 8;
   enum Algorithm alg = SrcVtx;
-  enum Partition prt = row;
+  enum Partition prt = Row;
   char *file = NULL;
 
   parse_args(argc, argv, &num_dpu, &alg, &prt, &file);
 
-  char *binPath;
+  char *bin_path;
   switch (alg) {
   case SrcVtx:
-    binPath = "bin/src-vtx";
+    bin_path = "bin/src-vtx";
     PRINT_INFO("Algorithm: Source-Vertex-based BFS.");
     break;
   case DstVtx:
-    binPath = "bin/dst-vtx";
+    bin_path = "bin/dst-vtx";
     PRINT_INFO("Algorithm: Destination-Vertex-based BFS.");
     break;
   case Edge:
-    binPath = "bin/edge";
+    bin_path = "bin/edge";
     PRINT_INFO("Algorithm: Edge-based BFS.");
     break;
   }
 
   switch (prt) {
-  case row:
+  case Row:
     PRINT_INFO("1D Row partitioning (source-nodes).");
     break;
-  case col:
+  case Col:
     PRINT_INFO("1D Column partitioning (destination-nodes/neighbors).");
     break;
   case _2D:
@@ -748,26 +635,26 @@ int main(int argc, char **argv) {
   struct dpu_set_t set, dpu;
   PRINT_INFO("Allocating %d DPUs.", num_dpu);
   DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
-  DPU_ASSERT(dpu_load(set, binPath, NULL));
+  DPU_ASSERT(dpu_load(set, bin_path, NULL));
 
-  struct COOMatrix coo = load_coo_matrix(file, num_dpu);         // Load coo-matrix from file.
-  struct COOMatrix *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
-  free_coo_matrix(coo);
+  struct COO coo = load_coo(file, num_dpu);                // Load coo-matrix from file.
+  struct COO *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
+  free_coo(coo);
 
   switch (alg) {
   case SrcVtx:
-    bfs_src(&set, &dpu, num_dpu, coo_prts, prt);
+    start_src(&set, &dpu, num_dpu, coo_prts, prt);
     break;
 
   case DstVtx: {
     // Convert to CSC.
-    struct CSCMatrix *csc_prts = malloc(num_dpu * sizeof(struct CSRMatrix));
+    struct CSC *csc_prts = malloc(num_dpu * sizeof(struct CSR));
     for (int i = 0; i < num_dpu; ++i)
       csc_prts[i] = coo_to_csc(coo_prts[i]);
     // TODO: Populate MRAM (common alg)
 
     for (int i = 0; i < num_dpu; ++i)
-      free_csc_matrix(csc_prts[i]);
+      free_csc(csc_prts[i]);
     free(csc_prts);
   } break;
 
@@ -776,12 +663,12 @@ int main(int argc, char **argv) {
   }
 
   for (int i = 0; i < num_dpu; ++i)
-    free_coo_matrix(coo_prts[i]);
+    free_coo(coo_prts[i]);
   free(coo_prts);
 
   return 0;
 
-  print_node_levels(set, dpu, coo.numRows);
+  print_node_levels(set, dpu, coo.num_rows);
   DPU_ASSERT(dpu_free(set));
   return 0;
 }

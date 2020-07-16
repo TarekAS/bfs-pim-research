@@ -9,7 +9,7 @@
 #define DPU_EXE "bin/testdpu"
 #endif
 
-void dpu_insert_to_mram_uint32_array(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
+void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
   // Get end of used MRAM pointer.
   mram_addr_t p_used_mram_end;
   DPU_ASSERT(dpu_copy_from(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
