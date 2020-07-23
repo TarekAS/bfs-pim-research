@@ -40,10 +40,12 @@ struct COO read_coo_matrix(char *file) {
   struct COO coo;
 
   // Initialize fields.
+  uint32_t num_nodes = 0;
   FILE *fp = fopen(file, "r");
-  fscanf(fp, "%u", &coo.num_rows);
-  fscanf(fp, "%u", &coo.num_cols);
+  fscanf(fp, "%u", &num_nodes);
   fscanf(fp, "%u", &coo.num_nonzeros);
+  coo.num_rows = num_nodes;
+  coo.num_cols = num_nodes;
 
   if (coo.num_rows % 2 == 1) {
     PRINT_WARNING("Number of rows must be even. Padding with an extra row.");
