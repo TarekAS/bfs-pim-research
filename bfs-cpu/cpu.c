@@ -30,7 +30,7 @@ struct CSR {
   uint32_t *col_idxs;
 };
 
-uint32_t *nodeLevels;
+uint32_t *node_levels;
 
 // Reads a coo-formated file into memory.
 struct COO read_coo_matrix(char *file) {
@@ -165,7 +165,7 @@ void bfs(struct Graph *graph, int startVertex) {
 
   graph->visited[startVertex] = 1;
   enqueue(q, startVertex);
-  nodeLevels[startVertex] = 0;
+  node_levels[startVertex] = 0;
 
   while (!isEmpty(q)) {
     printQueue(q);
@@ -179,8 +179,8 @@ void bfs(struct Graph *graph, int startVertex) {
 
       if (graph->visited[adjVertex] == 0) {
         graph->visited[adjVertex] = 1;
-        nodeLevels[adjVertex] =
-            nodeLevels[currentVertex] + 1; // Distance from root.
+        node_levels[adjVertex] =
+            node_levels[currentVertex] + 1; // Distance from root.
         enqueue(q, adjVertex);
       }
       temp = temp->next;
@@ -283,7 +283,7 @@ int main() {
   struct COO coo = read_coo_matrix("data/loc-gowalla_edges.txt");
   struct CSR csr = coo_to_csr(coo);
 
-  nodeLevels = calloc(csr.num_rows, sizeof(uint32_t));
+  node_levels = calloc(csr.num_rows, sizeof(uint32_t));
 
   struct Graph *graph = createGraph(csr.num_rows);
 
@@ -300,13 +300,14 @@ int main() {
   bfs(graph, 0);
 
   for (uint32_t node = 0; node < csr.num_rows; ++node) {
-    uint32_t level = nodeLevels[node];
+    uint32_t level = node_levels[node];
     if (node != 0 && level == 0) // Filters out "padded" rows.
       continue;
-    printf("nodeLevels[%u]=%u\n", node, nodeLevels[node]);
+    if (level == 1)
+      printf("node_levels[%u]=%u\n", node, node_levels[node]);
   }
 
-  free(nodeLevels);
+  free(node_levels);
   free_coo(coo);
   free_csr(csr);
 

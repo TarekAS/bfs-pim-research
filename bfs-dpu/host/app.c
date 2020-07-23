@@ -442,6 +442,31 @@ void free_csc(struct CSC csc) {
   free(csc.row_idxs);
 }
 
+// Fetches node_levels from each DPU and prints it.
+void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes) {
+
+  // Get node_levels from each DPU.
+  uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
+  uint32_t write_idx = 0;
+
+  uint32_t i = 0;
+  _DPU_FOREACH_I(*set, *dpu, i) {
+    uint32_t num_nodes;
+    dpu_get_u32(*dpu, "num_nodes", &num_nodes);
+    dpu_get_mram_array_u32(*dpu, "node_levels", &node_levels[write_idx], num_nodes);
+    write_idx += num_nodes;
+  }
+
+  // Print node levels.
+  PRINT_INFO("Output:");
+  for (uint32_t node = 0; node < total_nodes; ++node) {
+    uint32_t level = node_levels[node];
+    if (node != 0 && level == 0) // Filters out "padded" rows.
+      continue;
+    printf("node_levels[%u]=%u\n", node, node_levels[node]);
+  }
+}
+
 void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chunks) {
 
   uint32_t *next_frontier = calloc(total_chunks, sizeof(uint32_t));
@@ -506,7 +531,6 @@ void start_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct
   uint32_t total_chunks = total_nodes / 32;   // Total chunks of 32 nodes.
 
   uint32_t *next_frontier = calloc(total_chunks, sizeof(uint32_t));
-  uint32_t *nf_tmp = calloc(total_chunks, sizeof(uint32_t));
   next_frontier[0] = 1; // Set root node.
 
   // Copy data to MRAM.
@@ -515,25 +539,20 @@ void start_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct
   uint32_t i = 0;
   _DPU_FOREACH_I(*set, *dpu, i) {
 
-    dpu_set_u32(*dpu, "dpu_idx", i);
-
     // Copy CSR partition.
     dpu_set_u32(*dpu, "num_nodes", num_nodes);
     dpu_set_u32(*dpu, "num_neighbors", csr[i].num_nonzeros);
-    dpu_set_u32(*dpu, "node_offset", csr[i].row_offset);
-    // dpu_set_u32(*dpu, "origin", nodePtrs[0]); // index of first neighbor.
-
+    dpu_set_u32(*dpu, "node_offset", csr[i].row_offset); // offset of the first node of each DPU.
     dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
     dpu_insert_mram_array_u32(*dpu, "neighbors", csr[i].col_idxs, csr[i].num_nonzeros);
 
-    PRINT_INFO("dpu_idx = %u, num_nodes = %u, num_neighbors = %u, node_offset = %u",
-               i, num_nodes, csr[i].num_nonzeros, csr[i].row_offset);
-
-    // Copy data required for BFS.
+    // Chunks data.
     dpu_set_u32(*dpu, "num_chunks", num_chunks);
-    dpu_set_u32(*dpu, "total_chunks", total_chunks * i);
+    dpu_set_u32(*dpu, "total_chunks", total_chunks);
     dpu_set_u32(*dpu, "chunk_from", num_chunks * i);
     dpu_set_u32(*dpu, "chunk_to", num_chunks * (i + 1));
+
+    // Initialize BFS data.
     dpu_insert_mram_array_u32(*dpu, "visited", 0, total_chunks);
     dpu_insert_mram_array_u32(*dpu, "curr_frontier", 0, num_chunks);
     dpu_insert_mram_array_u32(*dpu, "next_frontier", next_frontier, total_chunks);
@@ -541,8 +560,10 @@ void start_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct
   }
 
   // Start BFS.
+  uint32_t *nf_tmp = calloc(total_chunks, sizeof(uint32_t));
+  next_frontier[0] = 0;
   uint32_t level = 0;
-  bool done = true;
+  int done = true;
   i = 0;
 
   while (true) {
@@ -555,15 +576,14 @@ void start_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct
     _DPU_FOREACH_I(*set, *dpu, i) {
 
       dpu_get_mram_array_u32(*dpu, "next_frontier", nf_tmp, total_chunks);
-
       for (uint32_t c = 0; c < total_chunks; ++c) {
         next_frontier[c] |= nf_tmp[c];
         if (next_frontier[c] != 0)
           done = false;
       }
 
-      // PRINT_INFO("DPU %u logs:", i);
-      // DPU_ASSERT(dpu_log_read(dpu, stdout));
+      // PRINT_DEBUG("Logs DPU %u:", i);
+      // DPU_ASSERT(dpu_log_read(*dpu, stdout));
     }
 
     if (done)
@@ -582,35 +602,10 @@ void start_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct
       next_frontier[c] = 0;
   }
 
-  // print_node_levels(set, dpu, node_levels, num_nodes);
+  print_node_levels(set, dpu, total_nodes);
 
   free(nf_tmp);
   free(next_frontier);
-}
-
-// Fetches node_levels from each DPU and prints it.
-void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t num_nodes) {
-
-  // Get node_levels from each DPU.
-  uint32_t *node_levels = calloc(num_nodes, sizeof(uint32_t));
-  uint32_t write_idx = 0;
-
-  uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-    uint32_t num_nodes;
-    dpu_get_u32(*dpu, "num_nodes", &num_nodes);
-    dpu_get_mram_array_u32(*dpu, "node_levels", &node_levels[write_idx], num_nodes);
-    write_idx += num_nodes;
-  }
-
-  // Print node levels.
-  PRINT_INFO("Output:");
-  for (uint32_t node = 0; node < num_nodes; ++node) {
-    uint32_t level = node_levels[node];
-    if (node != 0 && level == 0) // Filters out "padded" rows.
-      continue;
-    printf("node_levels[%u]=%u\n", node, node_levels[node]);
-  }
 }
 
 int main(int argc, char **argv) {

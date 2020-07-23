@@ -18,7 +18,6 @@
 #endif
 
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
-__host uint32_t dpu_idx;                                         // DPU index.
 
 // CSR data.
 __host uint32_t num_nodes;             // Number of nodes for this DPU.
@@ -27,13 +26,14 @@ __host uint32_t node_offset;           // Offset of the first nodePtr relative t
 __host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
 __host __mram_ptr uint32_t *neighbors; // DPU's share of neighbors.
 
-// BFS metadata.
-__host uint32_t level;        // Current level in the BFS.
-__host uint32_t origin;       // Index of the first neighbor.
-__host uint32_t num_chunks;   // Number of node chunks for this DPU (i.e. length of curr_frontier). Must be divisible by NR_TASKLETS.
+// Chunks data.
+__host uint32_t num_chunks;   // Number of node chunks for this DPU (i.e. length of curr_frontier). Assumed to be divisible by NR_TASKLETS.
 __host uint32_t total_chunks; // Number of node chunks (i.e. length of next_frontier).
 __host uint32_t chunk_from;   // [chunk_from, chunk_to[ ranges node chunks of this DPU.
 __host uint32_t chunk_to;
+
+// BFS data.
+__host uint32_t level;                     // Current level in the BFS.
 __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
@@ -44,9 +44,9 @@ MUTEX_INIT(nf_mutex);
 
 int main() {
 
-  uint32_t chunksPerTasklet = total_chunks / NR_TASKLETS;
-  uint32_t idx = chunksPerTasklet * me();
-  uint32_t lim = idx + chunksPerTasklet;
+  uint32_t chunks_per_tasklet = total_chunks / NR_TASKLETS;
+  uint32_t idx = chunks_per_tasklet * me();
+  uint32_t lim = idx + chunks_per_tasklet;
 
   // For each chunk of the next_frontier.
   for (uint32_t c = idx; c < lim; ++c) {
@@ -60,7 +60,7 @@ int main() {
       uint32_t ridx = c - chunk_from; // Relative index of next_frontier in the curr_frontier.
       curr_frontier[ridx] = f;        // Set curr_frontier.
 
-      // For each (set) node in curr_frontier, update its nodeLevel to the level.
+      // For each (set) node in curr_frontier, update its node level.
       for (uint32_t b = 0; b < 32; ++b)
         if (f & 1 << b % 32)
           node_levels[ridx * 32 + b] = level;
@@ -78,12 +78,8 @@ int main() {
         uint32_t node = c * 32 + b;
 
         // Get node_ptrs of this node.
-        uint32_t from = node_ptrs[node] - origin;
-        uint32_t to;
-        if (node < num_nodes - 1)
-          to = node_ptrs[node + 1] - origin;
-        else
-          to = num_neighbors;
+        uint32_t from = node_ptrs[node];
+        uint32_t to = node_ptrs[node + 1];
 
         // For each not visited neighbor of this node.
         for (uint32_t n = from; n < to; ++n) {
