@@ -303,8 +303,7 @@ int main() {
     uint32_t level = node_levels[node];
     if (node != 0 && level == 0) // Filters out "padded" rows.
       continue;
-    if (level == 1)
-      printf("node_levels[%u]=%u\n", node, node_levels[node]);
+    printf("node_levels[%u]=%u\n", node, node_levels[node]);
   }
 
   free(node_levels);
