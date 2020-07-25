@@ -15,10 +15,15 @@
 #define PRINT_WARNING(fmt, ...) fprintf(stderr, "\033[0;35mWARNING:\033[0m " fmt "\n", ##__VA_ARGS__)
 #define PRINT_INFO(fmt, ...) fprintf(stderr, "\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
 #define PRINT_STATUS(status) fprintf(stderr, "Status: %s\n", dpu_api_status_to_string(status))
-#define PRINT_DEBUG(fmt, ...) printf("\033[0;34mDEBUG:\033[0m    " fmt "\n", ##__VA_ARGS__)
+#define PRINT_DEBUG(fmt, ...) fprintf(stderr, "\033[0;34mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
 
 #define ROUND_UP_TO_MULTIPLE_OF_8(x) ((((x) + 7) / 8) * 8)
 #define ROUND_UP_TO_MULTIPLE_OF_32(x) ((((x)-1) / 32 + 1) * 32)
+
+// Note: this is overriden by compiler flags.
+#ifndef NR_TASKLETS
+#define NR_TASKLETS 16
+#endif
 
 enum Algorithm {
   SrcVtx = 0,
@@ -226,7 +231,7 @@ struct COO load_coo(char *file, uint32_t n) {
   // Pad number of nodes to a minimum of n * 32.
   uint32_t min = n * 32;
   if (num_nodes < min) {
-    PRINT_WARNING("Number of nodes too low. Setting number of nodes to %d.", min);
+    PRINT_WARNING("Number of nodes too low. Setting number of nodes to %u.", min);
     num_nodes = min;
   }
 
@@ -241,11 +246,13 @@ struct COO load_coo(char *file, uint32_t n) {
       break;
     }
 
-  // Pad nodes to multiple of LCM.
-  uint32_t padding = lcm - num_nodes % lcm;
-  if (padding != 0) {
-    PRINT_WARNING("Number of nodes must be multiple of %d. Padding with %d extra nodes.", lcm, padding);
-    num_nodes += padding;
+  if (num_nodes % lcm != 0) {
+
+    uint32_t padding = lcm - num_nodes % lcm;
+    if (padding != 0) {
+      PRINT_WARNING("Number of nodes must be multiple of %u. Padding with %u extra nodes.", lcm, padding);
+      num_nodes += padding;
+    }
   }
 
   coo.num_rows = num_nodes;
@@ -526,8 +533,13 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chun
 void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {
 
   // Create BFS metadata.
-  uint32_t num_nodes = csr[0].num_rows;       // Equal for all partitions.
-  uint32_t num_chunks = num_nodes / 32;       // Number of chunks of 32 nodes per DPU.
+  uint32_t num_nodes = csr[0].num_rows; // Equal for all partitions.
+  uint32_t num_chunks = num_nodes / 32; // Number of chunks of 32 nodes per DPU.
+  if (num_chunks % NR_TASKLETS != 0) {
+    PRINT_ERROR("Error: num_chunks=%u not divisible by NR_TASKLETS.", num_chunks);
+    exit(1);
+  }
+
   uint32_t total_nodes = num_nodes * num_dpu; // Total number of nodes.
   uint32_t total_chunks = total_nodes / 32;   // Total chunks of 32 nodes.
 
@@ -540,18 +552,16 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
   uint32_t i = 0;
   _DPU_FOREACH_I(*set, *dpu, i) {
 
-    // Copy CSR partition.
-    dpu_set_u32(*dpu, "num_nodes", num_nodes);
-    dpu_set_u32(*dpu, "num_neighbors", csr[i].num_nonzeros);
-    dpu_set_u32(*dpu, "node_offset", csr[i].row_offset); // offset of the first node of each DPU.
+    // Copy required CSR data.
+    dpu_set_u32(*dpu, "num_nodes", csr[i].num_rows);
     dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
-    dpu_insert_mram_array_u32(*dpu, "neighbors", csr[i].col_idxs, csr[i].num_nonzeros);
+    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_nonzeros);
 
     // Chunks data.
-    dpu_set_u32(*dpu, "num_chunks", num_chunks);
-    dpu_set_u32(*dpu, "total_chunks", total_chunks);
-    dpu_set_u32(*dpu, "chunk_from", num_chunks * i);
-    dpu_set_u32(*dpu, "chunk_to", num_chunks * (i + 1));
+    dpu_set_u32(*dpu, "len_nf", total_chunks);
+    dpu_set_u32(*dpu, "len_cf", num_chunks);
+    dpu_set_u32(*dpu, "cf_from", num_chunks * i);
+    dpu_set_u32(*dpu, "cf_to", num_chunks * (i + 1));
 
     // Initialize BFS data.
     dpu_insert_mram_array_u32(*dpu, "visited", 0, total_chunks);
@@ -568,7 +578,6 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
   i = 0;
 
   while (true) {
-
     // Launch DPUs.
     PRINT_INFO("Level %u", level);
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
@@ -609,6 +618,9 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
   free(next_frontier);
 }
 
+void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {
+}
+
 int main(int argc, char **argv) {
 
   int num_dpu = 8;
@@ -623,7 +635,7 @@ int main(int argc, char **argv) {
   free_coo(coo);
 
   struct dpu_set_t set, dpu;
-  PRINT_INFO("Allocating %d DPUs.", num_dpu);
+  PRINT_INFO("Allocating %u DPUs, %u tasklets each.", num_dpu, NR_TASKLETS);
   DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
 
   if (alg == SrcVtx) {
@@ -641,6 +653,7 @@ int main(int argc, char **argv) {
     } else if (prt == Col) {
 
       DPU_ASSERT(dpu_load(set, "bin/src-vtx-col", NULL));
+      bfs_src_vtx_col(&set, &dpu, num_dpu, csr, prt);
 
     } else if (prt == Edge) {
       // TODO
