@@ -148,14 +148,17 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       break;
     case 'a':
       if (strcmp(optarg, "src") == 0) {
+        PRINT_INFO("Algorithm: Source-Vertex-based BFS.");
         *alg = SrcVtx;
         if (!is_prt_set)
           *prt = Row;
       } else if (strcmp(optarg, "dst") == 0) {
+        PRINT_INFO("Algorithm: Destination-Vertex-based BFS.");
         *alg = DstVtx;
         if (!is_prt_set)
           *prt = Col;
       } else if (strcmp(optarg, "edge") == 0) {
+        PRINT_INFO("Algorithm: Edge-based BFS.");
         *alg = Edge;
         if (!is_prt_set)
           *prt = _2D;
@@ -165,13 +168,16 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       }
       break;
     case 'p':
-      if (strcmp(optarg, "row") == 0)
+      if (strcmp(optarg, "row") == 0) {
+        PRINT_INFO("1D Row partitioning (source-nodes).");
         *prt = Row;
-      else if (strcmp(optarg, "col") == 0)
+      } else if (strcmp(optarg, "col") == 0) {
+        PRINT_INFO("1D Column partitioning (destination-nodes/neighbors).");
         *prt = Col;
-      else if (strcmp(optarg, "2d") == 0)
+      } else if (strcmp(optarg, "2d") == 0) {
+        PRINT_INFO("2D partitioning (both source-nodes and destination-nodes).");
         *prt = _2D;
-      else {
+      } else {
         PRINT_ERROR("Incorrect -p argument. Supported partitioning: row | col | 2d");
         exit(1);
       }
@@ -517,12 +523,7 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chun
   free(next_frontier);
 }
 
-void start_src(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct COO *coo_prts, enum Partition prt) {
-
-  // Convert to CSR.
-  struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
-  for (int i = 0; i < num_dpu; ++i)
-    csr[i] = coo_to_csr(coo_prts[i]);
+void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {
 
   // Create BFS metadata.
   uint32_t num_nodes = csr[0].num_rows;       // Equal for all partitions.
@@ -617,62 +618,46 @@ int main(int argc, char **argv) {
 
   parse_args(argc, argv, &num_dpu, &alg, &prt, &file);
 
-  char *bin_path;
-  switch (alg) {
-  case SrcVtx:
-    bin_path = "bin/src-vtx";
-    PRINT_INFO("Algorithm: Source-Vertex-based BFS.");
-    break;
-  case DstVtx:
-    bin_path = "bin/dst-vtx";
-    PRINT_INFO("Algorithm: Destination-Vertex-based BFS.");
-    break;
-  case Edge:
-    bin_path = "bin/edge";
-    PRINT_INFO("Algorithm: Edge-based BFS.");
-    break;
-  }
-
-  switch (prt) {
-  case Row:
-    PRINT_INFO("1D Row partitioning (source-nodes).");
-    break;
-  case Col:
-    PRINT_INFO("1D Column partitioning (destination-nodes/neighbors).");
-    break;
-  case _2D:
-    PRINT_INFO("2D partitioning (both source-nodes and destination-nodes).");
-    break;
-  }
+  struct COO coo = load_coo(file, num_dpu);
+  struct COO *coo_prts = partition_coo(coo, num_dpu, prt);
+  free_coo(coo);
 
   struct dpu_set_t set, dpu;
   PRINT_INFO("Allocating %d DPUs.", num_dpu);
   DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
-  DPU_ASSERT(dpu_load(set, bin_path, NULL));
 
-  struct COO coo = load_coo(file, num_dpu);                // Load coo-matrix from file.
-  struct COO *coo_prts = partition_coo(coo, num_dpu, prt); // Partition COO by number of DPUs.
-  free_coo(coo);
+  if (alg == SrcVtx) {
 
-  switch (alg) {
-  case SrcVtx:
-    start_src(&set, &dpu, num_dpu, coo_prts, prt);
-    break;
+    // Convert COO partitions to CSR.
+    struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
+    for (int i = 0; i < num_dpu; ++i)
+      csr[i] = coo_to_csr(coo_prts[i]);
 
-  case DstVtx: {
-    // Convert to CSC.
+    if (prt == Row) {
+
+      DPU_ASSERT(dpu_load(set, "bin/src-vtx-row", NULL));
+      bfs_src_vtx_row(&set, &dpu, num_dpu, csr, prt);
+
+    } else if (prt == Col) {
+
+      DPU_ASSERT(dpu_load(set, "bin/src-vtx-col", NULL));
+
+    } else if (prt == Edge) {
+      // TODO
+    }
+
+  } else if (alg == DstVtx) {
+
+    // Convert COO partitions to CSC.
     struct CSC *csc_prts = malloc(num_dpu * sizeof(struct CSR));
     for (int i = 0; i < num_dpu; ++i)
       csc_prts[i] = coo_to_csc(coo_prts[i]);
-    // TODO: Populate MRAM (common alg)
 
-    for (int i = 0; i < num_dpu; ++i)
-      free_csc(csc_prts[i]);
-    free(csc_prts);
-  } break;
-
-  case Edge:
-    break;
+    // TODO
+    DPU_ASSERT(dpu_load(set, "bin/dst-vtx", NULL));
+  } else if (alg == Edge) {
+    // TODO
+    DPU_ASSERT(dpu_load(set, "bin/edge", NULL));
   }
 
   for (int i = 0; i < num_dpu; ++i)
