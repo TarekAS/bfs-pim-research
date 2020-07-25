@@ -281,6 +281,8 @@ struct COO load_coo(char *file, uint32_t n) {
 // Partition COO matrix into n COO matrices by col, or by row, or both (2D). Assumes n is even.
 struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 
+  PRINT_INFO("Partitioning COO-matrix into %u parts.", n);
+
   struct COO *prts = malloc(n * sizeof(struct COO));
 
   // Initialize numNonzeros.
@@ -627,15 +629,14 @@ int main(int argc, char **argv) {
   enum Algorithm alg = SrcVtx;
   enum Partition prt = Row;
   char *file = NULL;
-
   parse_args(argc, argv, &num_dpu, &alg, &prt, &file);
 
   struct COO coo = load_coo(file, num_dpu);
   struct COO *coo_prts = partition_coo(coo, num_dpu, prt);
   free_coo(coo);
 
-  struct dpu_set_t set, dpu;
   PRINT_INFO("Allocating %u DPUs, %u tasklets each.", num_dpu, NR_TASKLETS);
+  struct dpu_set_t set, dpu;
   DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
 
   if (alg == SrcVtx) {

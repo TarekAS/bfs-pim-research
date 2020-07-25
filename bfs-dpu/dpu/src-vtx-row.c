@@ -17,10 +17,6 @@
 #define NR_TASKLETS 16
 #endif
 
-#ifndef NR_TASKLETS
-#define NR_TASKLETS 16
-#endif
-
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
 
 // CSR data.
