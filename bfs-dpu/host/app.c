@@ -535,15 +535,19 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chun
 void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {
 
   // Create BFS metadata.
-  uint32_t num_nodes = csr[0].num_rows; // Equal for all partitions.
-  uint32_t num_chunks = num_nodes / 32; // Number of chunks of 32 nodes per DPU.
-  if (num_chunks % NR_TASKLETS != 0) {
-    PRINT_ERROR("Error: num_chunks=%u not divisible by NR_TASKLETS.", num_chunks);
-    exit(1);
-  }
-
+  uint32_t num_nodes = csr[0].num_rows;       // Equal for all partitions.
+  uint32_t num_chunks = num_nodes / 32;       // Number of chunks of 32 nodes per DPU.
   uint32_t total_nodes = num_nodes * num_dpu; // Total number of nodes.
   uint32_t total_chunks = total_nodes / 32;   // Total chunks of 32 nodes.
+
+  if (num_chunks % NR_TASKLETS != 0) {
+    PRINT_ERROR("Error: num_chunks=%u not divisible by NR_TASKLETS=%u.", num_chunks, NR_TASKLETS);
+    exit(1);
+  }
+  if (total_chunks % NR_TASKLETS != 0) {
+    PRINT_ERROR("Error: total_chunks=%u not divisible by NR_TASKLETS=%u.", total_chunks, NR_TASKLETS);
+    exit(1);
+  }
 
   uint32_t *next_frontier = calloc(total_chunks, sizeof(uint32_t));
   next_frontier[0] = 1; // Set root node.
