@@ -15,7 +15,7 @@
 #define PRINT_WARNING(fmt, ...) fprintf(stderr, "\033[0;35mWARNING:\033[0m " fmt "\n", ##__VA_ARGS__)
 #define PRINT_INFO(fmt, ...) fprintf(stderr, "\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
 #define PRINT_STATUS(status) fprintf(stderr, "Status: %s\n", dpu_api_status_to_string(status))
-#define PRINT_DEBUG(fmt, ...) fprintf(stderr, "\033[0;34mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
+#define PRINT_DEBUG(fmt, ...) fprintf(stderr, "\033[0;34mDEBUG:\033[0m   " fmt "\n", ##__VA_ARGS__)
 
 #define ROUND_UP_TO_MULTIPLE_OF_8(x) ((((x) + 7) / 8) * 8)
 #define ROUND_UP_TO_MULTIPLE_OF_32(x) ((((x)-1) / 32 + 1) * 32)
@@ -368,7 +368,7 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 }
 
 // Converts COO matrix to CSR format.
-struct CSR coo_to_csr(struct COO coo) {
+struct CSR coo_to_csr(struct COO coo, bool offset_rowptr) {
 
   struct CSR csr;
 
@@ -379,13 +379,8 @@ struct CSR coo_to_csr(struct COO coo) {
   csr.row_ptrs = calloc((csr.num_rows + 1), sizeof(uint32_t));
   csr.col_idxs = malloc(csr.num_nonzeros * sizeof(uint32_t));
 
-  // Find smallest row_idx to use as offset. Usually it's the first row_idx, if data is sorted.
-  uint32_t row_offset = coo.row_idxs[0];
-  for (uint32_t i = 1; i < coo.num_nonzeros; ++i) {
-    uint32_t row_idx = coo.row_idxs[i];
-    if (row_idx < row_offset)
-      row_offset = row_idx;
-  }
+  // Find smallest row_idx to use as offset. If data is sorted, it's the first row_idx.
+  uint32_t row_offset = offset_rowptr ? coo.row_idxs[0] : 0;
   csr.row_offset = row_offset;
 
   // Histogram row_idxs.
@@ -394,7 +389,7 @@ struct CSR coo_to_csr(struct COO coo) {
     csr.row_ptrs[row_idx]++;
   }
 
-  // Prefix sum rowPtrs.
+  // Prefix sum row_ptrs.
   uint32_t sum_before_next_row = 0;
   for (uint32_t row_idx = 0; row_idx < csr.num_rows; ++row_idx) {
     uint32_t sum_before_row = sum_before_next_row;
@@ -429,7 +424,7 @@ struct CSC coo_to_csc(struct COO coo) {
       .num_rows = coo.num_cols};
 
   // Convert to CSR, then CSC.
-  struct CSR csr = coo_to_csr(coo_trs);
+  struct CSR csr = coo_to_csr(coo_trs, false);
   struct CSC csc = {
       .col_ptrs = csr.row_ptrs,
       .row_idxs = csr.col_idxs,
@@ -559,7 +554,7 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
   _DPU_FOREACH_I(*set, *dpu, i) {
 
     // Copy required CSR data.
-    dpu_set_u32(*dpu, "num_nodes", csr[i].num_rows);
+    dpu_set_u32(*dpu, "num_nodes", num_nodes);
     dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
     dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_nonzeros);
 
@@ -581,14 +576,15 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
   next_frontier[0] = 0;
   uint32_t level = 0;
   int done = true;
-  i = 0;
 
   while (true) {
+
     // Launch DPUs.
     PRINT_INFO("Level %u", level);
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
 
     // Union next_frontiers.
+    uint32_t i = 0;
     _DPU_FOREACH_I(*set, *dpu, i) {
 
       dpu_get_mram_array_u32(*dpu, "next_frontier", nf_tmp, total_chunks);
@@ -598,7 +594,6 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
           done = false;
       }
 
-      // PRINT_DEBUG("Logs DPU %u:", i);
       // DPU_ASSERT(dpu_log_read(*dpu, stdout));
     }
 
@@ -625,6 +620,112 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
 }
 
 void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {
+
+  // Create BFS metadata.
+  uint32_t num_nodes = csr[0].num_rows;     // Num destination nodes (not to be confused with num edges).
+  uint32_t num_neighbors = csr[0].num_cols; // Num destination nodes (not to be confused with num edges).
+  uint32_t total_neighbors = num_neighbors * num_dpu;
+  uint32_t num_chunks = num_neighbors / 32;
+  uint32_t total_chunks = num_neighbors * num_dpu / 32;
+
+  if (num_chunks % NR_TASKLETS != 0) {
+    PRINT_ERROR("Error: num_chunks=%u not divisible by NR_TASKLETS=%u.", num_chunks, NR_TASKLETS);
+    exit(1);
+  }
+  if (total_chunks % NR_TASKLETS != 0) {
+    PRINT_ERROR("Error: total_chunks=%u not divisible by NR_TASKLETS=%u.", total_chunks, NR_TASKLETS);
+    exit(1);
+  }
+
+  uint32_t *next_frontier = calloc(total_chunks, sizeof(uint32_t));
+  next_frontier[0] = 1; // Set root node.
+
+  // Copy data to MRAM.
+  PRINT_INFO("Populating MRAM.");
+
+  uint32_t i = 0;
+  _DPU_FOREACH_I(*set, *dpu, i) {
+
+    dpu_set_u32(*dpu, "dpu_id", i);
+
+    // Copy required CSR data.
+    dpu_set_u32(*dpu, "num_neighbors", num_neighbors);
+    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
+    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_nonzeros);
+
+    // Chunks data.
+    dpu_set_u32(*dpu, "len_nf", num_chunks);
+    dpu_set_u32(*dpu, "len_cf", total_chunks);
+    dpu_set_u32(*dpu, "cf_from", num_chunks * i);
+    // dpu_set_u32(*dpu, "cf_to", len_nf * (i + 1));
+
+    // Initialize BFS data.
+    dpu_insert_mram_array_u32(*dpu, "visited", 0, num_chunks);
+    dpu_insert_mram_array_u32(*dpu, "curr_frontier", next_frontier, total_chunks);
+    dpu_insert_mram_array_u32(*dpu, "next_frontier", 0, num_chunks);
+    dpu_insert_mram_array_u32(*dpu, "node_levels", 0, num_neighbors);
+  }
+
+  // Start BFS.
+  uint32_t level = 0;
+  int done = true;
+
+  while (true) {
+
+    // Launch DPUs.
+    PRINT_INFO("Level %u", level);
+    DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
+
+    // Concatenate all next_frontiers.
+    uint32_t i = 0;
+    uint32_t write_idx = 0;
+    _DPU_FOREACH_I(*set, *dpu, i) {
+
+      dpu_get_mram_array_u32(*dpu, "next_frontier", &next_frontier[write_idx], num_chunks);
+      write_idx += num_chunks;
+
+      // DPU_ASSERT(dpu_log_read(*dpu, stdout));
+    }
+
+    // Check if done.
+    for (uint32_t c = 0; c < total_chunks; ++c)
+      if (next_frontier[c] != 0) {
+        done = false;
+        break;
+      }
+
+    if (done)
+      break;
+    done = true;
+    ++level;
+
+    // Update level and curr_frontier of DPUs.
+    dpu_set_u32(*set, "level", level);
+    _DPU_FOREACH_I(*set, *dpu, i) {
+      dpu_set_mram_array_u32(*dpu, "curr_frontier", next_frontier, total_chunks);
+    }
+  }
+
+  // Print node levels.
+  uint32_t *node_levels = calloc(total_neighbors, sizeof(uint32_t));
+
+  i = 0;
+  uint32_t write_idx = 0;
+  _DPU_FOREACH_I(*set, *dpu, i) {
+    dpu_get_mram_array_u32(*dpu, "node_levels", &node_levels[write_idx], num_neighbors);
+    write_idx += num_neighbors;
+  }
+
+  PRINT_INFO("Output:");
+  for (uint32_t node = 0; node < total_neighbors; ++node) {
+    uint32_t level = node_levels[node];
+    if (node != 0 && level == 0) // Filters out "padded" rows.
+      continue;
+    printf("node_levels[%u]=%u\n", node, level);
+  }
+
+  // Free resources.
+  free(next_frontier);
 }
 
 int main(int argc, char **argv) {
@@ -645,17 +746,20 @@ int main(int argc, char **argv) {
 
   if (alg == SrcVtx) {
 
-    // Convert COO partitions to CSR.
-    struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
-    for (int i = 0; i < num_dpu; ++i)
-      csr[i] = coo_to_csr(coo_prts[i]);
-
     if (prt == Row) {
+      // Convert COO partitions to CSR.
+      struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
+      for (int i = 0; i < num_dpu; ++i)
+        csr[i] = coo_to_csr(coo_prts[i], true);
 
       DPU_ASSERT(dpu_load(set, "bin/src-vtx-row", NULL));
       bfs_src_vtx_row(&set, &dpu, num_dpu, csr, prt);
 
     } else if (prt == Col) {
+      // Convert COO partitions to CSR.
+      struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
+      for (int i = 0; i < num_dpu; ++i)
+        csr[i] = coo_to_csr(coo_prts[i], false);
 
       DPU_ASSERT(dpu_load(set, "bin/src-vtx-col", NULL));
       bfs_src_vtx_col(&set, &dpu, num_dpu, csr, prt);

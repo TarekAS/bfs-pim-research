@@ -11,7 +11,7 @@ Project to benchmark DPU-accelerated Breadth-First Search, compared to classic C
   $ ./bin/cpu <datafile>  # bench CPU-only version.
   $ make clean
 ```
-Where `datafile` is a COO-formated graph datafile, such as the first line contains the number of nodes and edges, and the subsequent lines contain the row/col index pairs separated by a space.
+Where `datafile` is a COO-formated graph datafile, such as the first line contains the number of nodes and edges, and the subsequent lines contain the row/col index pairs separated by a space and sorted in increasing order by the row index.
 
 For example:
 ```

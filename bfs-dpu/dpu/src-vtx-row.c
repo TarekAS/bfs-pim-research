@@ -47,11 +47,11 @@ int main() {
   uint32_t lim = idx + nf_per_tasklet;
 
   // Loop over next_frontier.
-  for (uint32_t c = idx; c < idx + nf_per_tasklet; ++c) {
+  for (uint32_t c = idx; c < lim; ++c) {
 
     uint32_t f = next_frontier[c]; // Cache nf.
-    visited[c] |= f;               // Update visited nodes.
     next_frontier[c] = 0;          // Clear nf.
+    visited[c] |= f;               // Update visited nodes.
 
     // Take DPU part of next_frontier as curr_frontier, and update node levels according to curr_frontier.
     if (c >= cf_from && c < cf_to) {
