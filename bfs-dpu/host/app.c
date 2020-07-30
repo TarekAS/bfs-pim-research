@@ -40,7 +40,7 @@ enum Partition {
 struct COO {
   uint32_t num_rows;
   uint32_t num_cols;
-  uint32_t num_nonzeros;
+  uint32_t num_edges;
   uint32_t *row_idxs;
   uint32_t *col_idxs;
 };
@@ -48,8 +48,7 @@ struct COO {
 struct CSR {
   uint32_t num_rows;
   uint32_t num_cols;
-  uint32_t num_nonzeros;
-  uint32_t row_offset;
+  uint32_t num_edges;
   uint32_t *row_ptrs;
   uint32_t *col_idxs;
 };
@@ -57,7 +56,7 @@ struct CSR {
 struct CSC {
   uint32_t num_rows;
   uint32_t num_cols;
-  uint32_t num_nonzeros;
+  uint32_t num_edges;
   uint32_t *col_ptrs;
   uint32_t *row_idxs;
 };
@@ -138,7 +137,7 @@ void dpu_get_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst) {
 }
 
 // Parse CLI args and options.
-void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **file) {
+void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **bin_path, char **file) {
   bool is_prt_set = false;
   int c;
   opterr = 0;
@@ -203,6 +202,25 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
     exit(1);
   }
   *file = argv[optind];
+
+  if (*alg == SrcVtx && *prt == Row)
+    *bin_path = "bin/src-vtx-row";
+  else if (*alg == SrcVtx && *prt == Col)
+    *bin_path = "bin/src-vtx-col";
+  else if (*alg == SrcVtx && *prt == _2D)
+    *bin_path = "bin/src-vtx-2d";
+  else if (*alg == DstVtx && *prt == Row)
+    *bin_path = "bin/dst-vtx-row";
+  else if (*alg == DstVtx && *prt == Col)
+    *bin_path = "bin/dst-vtx-col";
+  else if (*alg == DstVtx && *prt == _2D)
+    *bin_path = "bin/dst-vtx-2d";
+  else if (*alg == Edge && *prt == Row)
+    *bin_path = "bin/edge-row";
+  else if (*alg == Edge && *prt == Col)
+    *bin_path = "bin/edge-col";
+  else if (*alg == Edge && *prt == _2D)
+    *bin_path = "bin/edge-2d";
 }
 
 // Load coo-formated file into memory.
@@ -224,7 +242,7 @@ struct COO load_coo(char *file, uint32_t n) {
   FILE *fp = fopen(file, "r");
   fscanf(fp, "%u", &num_nodes);
   fscanf(fp, "%u", &num_edges);
-  coo.num_nonzeros = num_edges;
+  coo.num_edges = num_edges;
   coo.row_idxs = malloc(num_edges * sizeof(uint32_t));
   coo.col_idxs = malloc(num_edges * sizeof(uint32_t));
 
@@ -285,34 +303,38 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 
   struct COO *prts = malloc(n * sizeof(struct COO));
 
-  // Initialize numNonzeros.
+  // Initialize num_edges.
   for (int i = 0; i < n; ++i)
-    prts[i].num_nonzeros = 0;
+    prts[i].num_edges = 0;
 
   uint32_t num_rows = coo.num_rows;
   uint32_t num_cols = coo.num_cols;
-  uint32_t row_div = 1;
   uint32_t col_div = 1;
+  uint32_t row_div = 1;
+  bool offset_row = false;
+  bool offset_col = false;
 
-  // Determine num_rows, num_cols, and numNonZeros per partition.
+  // Determine num_rows, num_cols, and num_edges per partition.
   switch (prt) {
   case Row:
+    offset_row = true;
     num_rows /= n;
-    for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    for (uint32_t i = 0; i < coo.num_edges; ++i) {
       uint32_t row_idx = coo.row_idxs[i];
-      prts[row_idx / num_rows].num_nonzeros++;
+      prts[row_idx / num_rows].num_edges++;
     }
     break;
 
   case Col:
     num_cols /= n;
-    for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    for (uint32_t i = 0; i < coo.num_edges; ++i) {
       uint32_t col_idx = coo.col_idxs[i];
-      prts[col_idx / num_cols].num_nonzeros++;
+      prts[col_idx / num_cols].num_edges++;
     }
     break;
 
   case _2D:
+
     // Find the two nearest factors of n.
     row_div = (uint32_t)sqrt(n);
     while (n % row_div != 0)
@@ -322,13 +344,12 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
     num_rows /= row_div;
     num_cols /= col_div;
 
-    for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+    for (uint32_t i = 0; i < coo.num_edges; ++i) {
       uint32_t p_row = coo.row_idxs[i] / num_rows; // Partition row index.
       uint32_t p_col = coo.col_idxs[i] / num_cols; // Partition col index.
       uint32_t p = p_row * col_div + p_col;        // col-major index of coo.
-      prts[p].num_nonzeros++;
+      prts[p].num_edges++;
     }
-
     break;
   }
 
@@ -336,13 +357,13 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
   for (uint32_t i = 0; i < n; ++i) {
     prts[i].num_rows = num_rows;
     prts[i].num_cols = num_cols;
-    prts[i].row_idxs = malloc(prts[i].num_nonzeros * sizeof(uint32_t));
-    prts[i].col_idxs = malloc(prts[i].num_nonzeros * sizeof(uint32_t));
-    prts[i].num_nonzeros = 0; // We'll reuse as index when appending data.
+    prts[i].row_idxs = malloc(prts[i].num_edges * sizeof(uint32_t));
+    prts[i].col_idxs = malloc(prts[i].num_edges * sizeof(uint32_t));
+    prts[i].num_edges = 0; // We'll reuse as index when appending data.
   }
 
   // Bin row and col pairs.
-  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
+  for (uint32_t i = 0; i < coo.num_edges; ++i) {
     uint32_t row_idx = coo.row_idxs[i];
     uint32_t col_idx = coo.col_idxs[i];
 
@@ -358,34 +379,41 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
       p = p_row * col_div + p_col;
     }
 
-    uint32_t idx = prts[p].num_nonzeros;
-    prts[p].col_idxs[idx] = col_idx;
+    uint32_t idx = prts[p].num_edges;
     prts[p].row_idxs[idx] = row_idx;
-    prts[p].num_nonzeros++;
+    prts[p].col_idxs[idx] = col_idx;
+    prts[p].num_edges++;
+  }
+
+  // Offset nodes.
+  for (uint32_t p = 0; p < n; ++p) {
+    uint32_t row_offset = offset_row ? prts[p].row_idxs[0] : 0;
+    uint32_t col_offset = offset_col ? prts[p].row_idxs[0] : 0;
+
+    for (uint32_t i = 0; i < prts[p].num_edges; ++i) {
+      prts[p].row_idxs[i] -= row_offset;
+      prts[p].col_idxs[i] -= col_offset;
+    }
   }
 
   return prts;
 }
 
 // Converts COO matrix to CSR format.
-struct CSR coo_to_csr(struct COO coo, bool offset_rowptr) {
+struct CSR coo_to_csr(struct COO coo) {
 
   struct CSR csr;
 
   // Initialize fields.
   csr.num_rows = coo.num_rows;
   csr.num_cols = coo.num_cols;
-  csr.num_nonzeros = coo.num_nonzeros;
+  csr.num_edges = coo.num_edges;
   csr.row_ptrs = calloc((csr.num_rows + 1), sizeof(uint32_t));
-  csr.col_idxs = malloc(csr.num_nonzeros * sizeof(uint32_t));
-
-  // Find smallest row_idx to use as offset. If data is sorted, it's the first row_idx.
-  uint32_t row_offset = offset_rowptr ? coo.row_idxs[0] : 0;
-  csr.row_offset = row_offset;
+  csr.col_idxs = malloc(csr.num_edges * sizeof(uint32_t));
 
   // Histogram row_idxs.
-  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
-    uint32_t row_idx = coo.row_idxs[i] - row_offset;
+  for (uint32_t i = 0; i < coo.num_edges; ++i) {
+    uint32_t row_idx = coo.row_idxs[i];
     csr.row_ptrs[row_idx]++;
   }
 
@@ -399,8 +427,8 @@ struct CSR coo_to_csr(struct COO coo, bool offset_rowptr) {
   csr.row_ptrs[csr.num_rows] = sum_before_next_row;
 
   // Bin the nonzeros.
-  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
-    uint32_t row_idx = coo.row_idxs[i] - row_offset;
+  for (uint32_t i = 0; i < coo.num_edges; ++i) {
+    uint32_t row_idx = coo.row_idxs[i];
     uint32_t nnzIdx = csr.row_ptrs[row_idx]++;
     csr.col_idxs[nnzIdx] = coo.col_idxs[i];
   }
@@ -424,7 +452,7 @@ struct CSC coo_to_csc(struct COO coo) {
       .num_rows = coo.num_cols};
 
   // Convert to CSR, then CSC.
-  struct CSR csr = coo_to_csr(coo_trs, false);
+  struct CSR csr = coo_to_csr(coo_trs);
   struct CSC csc = {
       .col_ptrs = csr.row_ptrs,
       .row_idxs = csr.col_idxs,
@@ -556,7 +584,7 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
     // Copy required CSR data.
     dpu_set_u32(*dpu, "num_nodes", num_nodes);
     dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
-    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_nonzeros);
+    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_edges);
 
     // Chunks data.
     dpu_set_u32(*dpu, "len_nf", total_chunks);
@@ -651,7 +679,7 @@ void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
     // Copy required CSR data.
     dpu_set_u32(*dpu, "num_neighbors", num_neighbors);
     dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
-    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_nonzeros);
+    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_edges);
 
     // Chunks data.
     dpu_set_u32(*dpu, "len_nf", num_chunks);
@@ -728,63 +756,51 @@ void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
   free(next_frontier);
 }
 
+void bfs_src_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {
+}
+
+void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, int num_dpu, enum Partition prt) {
+
+  // Convert COO partitions to CSR.
+  struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
+  for (int i = 0; i < num_dpu; ++i) {
+    csr[i] = coo_to_csr(coo[i]);
+    free_coo(coo[i]);
+  }
+
+  if (prt == Row)
+    bfs_src_vtx_row(set, dpu, num_dpu, csr, prt);
+  else if (prt == Col)
+    bfs_src_vtx_col(set, dpu, num_dpu, csr, prt);
+  else
+    bfs_src_vtx_2d(set, dpu, num_dpu, csr, prt);
+}
+
 int main(int argc, char **argv) {
 
   int num_dpu = 8;
   enum Algorithm alg = SrcVtx;
   enum Partition prt = Row;
+  char *bin_path;
   char *file = NULL;
-  parse_args(argc, argv, &num_dpu, &alg, &prt, &file);
+  parse_args(argc, argv, &num_dpu, &alg, &prt, &bin_path, &file);
+
+  PRINT_INFO("Allocating %u DPUs, %u tasklets each.", num_dpu, NR_TASKLETS);
+  struct dpu_set_t set, dpu;
+  DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
+  DPU_ASSERT(dpu_load(set, bin_path, NULL));
 
   struct COO coo = load_coo(file, num_dpu);
   struct COO *coo_prts = partition_coo(coo, num_dpu, prt);
   free_coo(coo);
 
-  PRINT_INFO("Allocating %u DPUs, %u tasklets each.", num_dpu, NR_TASKLETS);
-  struct dpu_set_t set, dpu;
-  DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
-
-  if (alg == SrcVtx) {
-
-    if (prt == Row) {
-      // Convert COO partitions to CSR.
-      struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
-      for (int i = 0; i < num_dpu; ++i)
-        csr[i] = coo_to_csr(coo_prts[i], true);
-
-      DPU_ASSERT(dpu_load(set, "bin/src-vtx-row", NULL));
-      bfs_src_vtx_row(&set, &dpu, num_dpu, csr, prt);
-
-    } else if (prt == Col) {
-      // Convert COO partitions to CSR.
-      struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
-      for (int i = 0; i < num_dpu; ++i)
-        csr[i] = coo_to_csr(coo_prts[i], false);
-
-      DPU_ASSERT(dpu_load(set, "bin/src-vtx-col", NULL));
-      bfs_src_vtx_col(&set, &dpu, num_dpu, csr, prt);
-
-    } else if (prt == Edge) {
-      // TODO
-    }
-
-  } else if (alg == DstVtx) {
-
-    // Convert COO partitions to CSC.
-    struct CSC *csc_prts = malloc(num_dpu * sizeof(struct CSR));
-    for (int i = 0; i < num_dpu; ++i)
-      csc_prts[i] = coo_to_csc(coo_prts[i]);
-
+  if (alg == SrcVtx)
+    start_src_vtx(&set, &dpu, coo_prts, num_dpu, prt);
+  else if (alg == DstVtx) {
     // TODO
-    DPU_ASSERT(dpu_load(set, "bin/dst-vtx", NULL));
   } else if (alg == Edge) {
     // TODO
-    DPU_ASSERT(dpu_load(set, "bin/edge", NULL));
   }
-
-  for (int i = 0; i < num_dpu; ++i)
-    free_coo(coo_prts[i]);
-  free(coo_prts);
 
   DPU_ASSERT(dpu_free(set));
   return 0;
