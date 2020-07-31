@@ -326,6 +326,7 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
     break;
 
   case Col:
+    offset_col = true;
     num_cols /= n;
     for (uint32_t i = 0; i < coo.num_edges; ++i) {
       uint32_t col_idx = coo.col_idxs[i];
@@ -387,8 +388,8 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 
   // Offset nodes.
   for (uint32_t p = 0; p < n; ++p) {
-    uint32_t row_offset = offset_row ? prts[p].row_idxs[0] : 0;
-    uint32_t col_offset = offset_col ? prts[p].row_idxs[0] : 0;
+    uint32_t row_offset = offset_row ? prts[p].num_rows * p : 0;
+    uint32_t col_offset = offset_col ? prts[p].num_cols * p : 0;
 
     for (uint32_t i = 0; i < prts[p].num_edges; ++i) {
       prts[p].row_idxs[i] -= row_offset;
@@ -478,31 +479,6 @@ void free_csr(struct CSR csr) {
 void free_csc(struct CSC csc) {
   free(csc.col_ptrs);
   free(csc.row_idxs);
-}
-
-// Fetches node_levels from each DPU and prints it.
-void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes) {
-
-  // Get node_levels from each DPU.
-  uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
-  uint32_t write_idx = 0;
-
-  uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-    uint32_t num_nodes;
-    dpu_get_u32(*dpu, "num_nodes", &num_nodes);
-    dpu_get_mram_array_u32(*dpu, "node_levels", &node_levels[write_idx], num_nodes);
-    write_idx += num_nodes;
-  }
-
-  // Print node levels.
-  PRINT_INFO("Output:");
-  for (uint32_t node = 0; node < total_nodes; ++node) {
-    uint32_t level = node_levels[node];
-    if (node != 0 && level == 0) // Filters out "padded" rows.
-      continue;
-    printf("node_levels[%u]=%u\n", node, node_levels[node]);
-  }
 }
 
 void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chunks) {
@@ -641,7 +617,26 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
       next_frontier[c] = 0;
   }
 
-  print_node_levels(set, dpu, total_nodes);
+  // Get node_levels from each DPU.
+  uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
+  uint32_t write_idx = 0;
+
+  i = 0;
+  _DPU_FOREACH_I(*set, *dpu, i) {
+    uint32_t num_nodes;
+    dpu_get_u32(*dpu, "num_nodes", &num_nodes);
+    dpu_get_mram_array_u32(*dpu, "node_levels", &node_levels[write_idx], num_nodes);
+    write_idx += num_nodes;
+  }
+
+  // Print node levels.
+  PRINT_INFO("Output:");
+  for (uint32_t node = 0; node < total_nodes; ++node) {
+    uint32_t level = node_levels[node];
+    if (node != 0 && level == 0) // Filters out "padded" rows.
+      continue;
+    printf("node_levels[%u]=%u\n", node, node_levels[node]);
+  }
 
   free(nf_tmp);
   free(next_frontier);
@@ -754,6 +749,7 @@ void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
 
   // Free resources.
   free(next_frontier);
+  free(node_levels);
 }
 
 void bfs_src_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {

@@ -64,9 +64,9 @@ int main() {
           uint32_t neighbor = edges[n];
           uint32_t offset = 1 << neighbor % 32;
 
-          if (!(visited[neighbor / 32 - cf_from] & offset)) {
+          if (!(visited[neighbor / 32] & offset)) {
             mutex_lock(nf_mutex);
-            next_frontier[neighbor / 32 - cf_from] |= offset;
+            next_frontier[neighbor / 32] |= offset;
             mutex_unlock(nf_mutex);
           }
         }
