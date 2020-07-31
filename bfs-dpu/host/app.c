@@ -309,8 +309,8 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 
   uint32_t num_rows = coo.num_rows;
   uint32_t num_cols = coo.num_cols;
-  uint32_t col_div = 1;
   uint32_t row_div = 1;
+  uint32_t col_div = 1;
   bool offset_row = false;
   bool offset_col = false;
 
@@ -318,7 +318,8 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
   switch (prt) {
   case Row:
     offset_row = true;
-    num_rows /= n;
+    row_div = n;
+    num_rows /= row_div;
     for (uint32_t i = 0; i < coo.num_edges; ++i) {
       uint32_t row_idx = coo.row_idxs[i];
       prts[row_idx / num_rows].num_edges++;
@@ -327,7 +328,8 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 
   case Col:
     offset_col = true;
-    num_cols /= n;
+    col_div = n;
+    num_cols /= col_div;
     for (uint32_t i = 0; i < coo.num_edges; ++i) {
       uint32_t col_idx = coo.col_idxs[i];
       prts[col_idx / num_cols].num_edges++;
@@ -335,6 +337,8 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
     break;
 
   case _2D:
+    offset_row = true;
+    offset_col = true;
 
     // Find the two nearest factors of n.
     row_div = (uint32_t)sqrt(n);
@@ -354,13 +358,13 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
     break;
   }
 
-  // Populate COO partitions.
+  // Initialize COO partitions.
   for (uint32_t i = 0; i < n; ++i) {
     prts[i].num_rows = num_rows;
     prts[i].num_cols = num_cols;
     prts[i].row_idxs = malloc(prts[i].num_edges * sizeof(uint32_t));
     prts[i].col_idxs = malloc(prts[i].num_edges * sizeof(uint32_t));
-    prts[i].num_edges = 0; // We'll reuse as index when appending data.
+    prts[i].num_edges = 0; // We'll re-increment as we append data.
   }
 
   // Bin row and col pairs.
@@ -375,8 +379,8 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
     else if (prt == Col)
       p = col_idx / num_cols;
     else if (prt == _2D) {
-      uint32_t p_row = coo.row_idxs[i] / num_rows;
-      uint32_t p_col = coo.col_idxs[i] / num_cols;
+      uint32_t p_row = row_idx / num_rows;
+      uint32_t p_col = col_idx / num_cols;
       p = p_row * col_div + p_col;
     }
 
@@ -388,8 +392,8 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
 
   // Offset nodes.
   for (uint32_t p = 0; p < n; ++p) {
-    uint32_t row_offset = offset_row ? prts[p].num_rows * p : 0;
-    uint32_t col_offset = offset_col ? prts[p].num_cols * p : 0;
+    uint32_t row_offset = offset_row ? p / col_div * num_rows : 0;
+    uint32_t col_offset = offset_col ? p % col_div * num_cols : 0;
 
     for (uint32_t i = 0; i < prts[p].num_edges; ++i) {
       prts[p].row_idxs[i] -= row_offset;
@@ -753,6 +757,52 @@ void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, 
 }
 
 void bfs_src_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, int num_dpu, struct CSR *csr, enum Partition prt) {
+
+  exit(1);
+
+  // Create BFS metadata.
+  uint32_t num_nodes = csr[0].num_rows;
+  uint32_t num_neighbors = csr[0].num_cols;
+  uint32_t total_nodes = num_nodes * num_dpu;
+  uint32_t total_neighbors = num_neighbors * num_dpu;
+  uint32_t len_frontier = total_nodes / 32;
+  uint32_t len_nf = num_neighbors / 32;
+  uint32_t len_cf = num_nodes / 32;
+
+  if (len_nf % NR_TASKLETS != 0) {
+    PRINT_ERROR("Error: len_nf=%u not divisible by NR_TASKLETS=%u.", len_nf, NR_TASKLETS);
+    exit(1);
+  }
+  if (len_cf % NR_TASKLETS != 0) {
+    PRINT_ERROR("Error: len_cf=%u not divisible by NR_TASKLETS=%u.", len_cf, NR_TASKLETS);
+    exit(1);
+  }
+
+  uint32_t *next_frontier = calloc(len_frontier, sizeof(uint32_t));
+  next_frontier[0] = 1; // Set root node.
+
+  // Copy data to MRAM.
+  PRINT_INFO("Populating MRAM.");
+
+  uint32_t i = 0;
+  _DPU_FOREACH_I(*set, *dpu, i) {
+
+    dpu_set_u32(*dpu, "dpu_id", i);
+
+    // Copy required CSR data.
+    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
+    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_edges);
+
+    // Chunks data.
+    dpu_set_u32(*dpu, "len_nf", len_nf);
+    dpu_set_u32(*dpu, "len_cf", len_cf);
+
+    // Initialize BFS data.
+    dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
+    dpu_insert_mram_array_u32(*dpu, "curr_frontier", 0, len_cf);
+    dpu_insert_mram_array_u32(*dpu, "next_frontier", next_frontier, len_nf);
+    dpu_insert_mram_array_u32(*dpu, "node_levels", 0, num_neighbors);
+  }
 }
 
 void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, int num_dpu, enum Partition prt) {
