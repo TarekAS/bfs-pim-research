@@ -18,7 +18,6 @@
 #endif
 
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
-__host uint32_t dpu_id;
 
 // CSR data.
 __host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
