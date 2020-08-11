@@ -50,9 +50,9 @@ int main() {
   // Loop over next_frontier.
   for (uint32_t c = idx; c < lim; ++c) {
 
-    uint32_t f = curr_frontier[c + cf_from];
-    visited[c] |= f;      // Update visited nodes.
-    next_frontier[c] = 0; // Clear nf.
+    uint32_t f = next_frontier[c]; // Cache nf.
+    visited[c] |= f;               // Update visited nodes.
+    next_frontier[c] = 0;          // Clear nf.
 
     // Update node_levels according to the next_frontier.
     for (uint32_t b = 0; b < 32; ++b)
