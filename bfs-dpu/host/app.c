@@ -488,35 +488,16 @@ void free_csc(struct CSC csc) {
   free(csc.row_idxs);
 }
 
-// Prints node levels from DPUs using 1D partitioning (Row or Col).
-void print_node_levels_1d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes, uint32_t inc) {
+// Fetches and prints node levels from DPUs.
+void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes, uint32_t len_nl) {
   uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
+  uint32_t *nl_tmp = calloc(len_nl, sizeof(uint32_t));
 
   uint32_t i = 0;
   _DPU_FOREACH_I(*set, *dpu, i) {
-    dpu_get_mram_array_u32(*dpu, "node_levels", &node_levels[i * inc], inc);
-  }
-
-  for (uint32_t node = 0; node < total_nodes; ++node) {
-    uint32_t level = node_levels[node];
-    if (node != 0 && level == 0) // Filters out "padded" rows.
-      continue;
-    printf("node_levels[%u]=%u\n", node, node_levels[node]);
-  }
-
-  free(node_levels);
-}
-
-// Prints node levels from DPUs using 2D partitioning.
-void print_node_levels_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes, uint32_t num_neighbors) {
-  uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
-  uint32_t *nl_tmp = calloc(num_neighbors, sizeof(uint32_t));
-
-  uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-    dpu_get_mram_array_u32(*dpu, "node_levels", nl_tmp, num_neighbors);
-    for (uint32_t n = 0; n < num_neighbors; ++n) {
-      uint32_t nreal = n + i * num_neighbors % total_nodes;
+    dpu_get_mram_array_u32(*dpu, "node_levels", nl_tmp, len_nl);
+    for (uint32_t n = 0; n < len_nl; ++n) {
+      uint32_t nreal = n + i * len_nl % total_nodes;
       if (node_levels[nreal] == 0 || nl_tmp[n] < node_levels[nreal])
         node_levels[nreal] = nl_tmp[n];
     }
@@ -583,12 +564,10 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chun
   free(next_frontier);
 }
 
-void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_nodes) {
+void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_nodes) {
 
-  // Start BFS.
   uint32_t *frontier = calloc(len_nf, sizeof(uint32_t));
   uint32_t *nf_tmp = calloc(len_nf, sizeof(uint32_t));
-  frontier[0] = 0;
   uint32_t level = 0;
   bool done = true;
 
@@ -625,15 +604,17 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_
     // Clear frontier.
     memset(frontier, 0, len_nf * sizeof(uint32_t));
   }
+
+  free(nf_tmp);
+  free(frontier);
 }
 
-void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_neighbors) {
+void bfs_src_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_neighbors) {
 
-  uint32_t *frontier = calloc(len_frontier, sizeof(uint32_t));
+  uint32_t *frontier = calloc(len_cf, sizeof(uint32_t));
   uint32_t level = 0;
   bool done = true;
 
-  // BFS Start.
   while (true) {
 
     // Launch DPUs.
@@ -730,27 +711,26 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     free_coo(coo[i]);
   }
 
-  // Create BFS metadata.
+  // Compute BFS metadata.
   uint32_t num_nodes = csr[0].num_rows;
   uint32_t num_neighbors = csr[0].num_cols;
-  uint32_t row_div, col_div, total_nodes, len_nl;
   uint32_t len_cf = num_nodes / 32;
   uint32_t len_nf = num_neighbors / 32;
+  uint32_t total_nodes, len_nl;
+  uint32_t row_div = 1, col_div = 1;
 
   if (prt == Row) {
-    col_div = 1;
     row_div = num_dpu;
     total_nodes = num_neighbors;
     len_nl = num_nodes;
   } else if (prt == Col) {
     col_div = num_dpu;
-    row_div = 1;
     total_nodes = num_nodes;
     len_nl = num_neighbors;
   } else {
     nearest_factors(num_dpu, &row_div, &col_div);
     total_nodes = num_nodes * num_dpu / col_div;
-    len_nl = num_nodes;
+    len_nl = num_neighbors;
   }
 
   uint32_t len_frontier = total_nodes / 32;
@@ -767,18 +747,17 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
     dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_edges);
 
-    if (prt == Row) { // not for row-generic // TODO: investigate
-      dpu_set_u32(*dpu, "num_nodes", num_nodes);
-      dpu_set_u32(*dpu, "cf_from", len_cf * i);
-      dpu_set_u32(*dpu, "cf_to", len_cf * (i + 1));
-    }
-
     // Copy BFS data.
     dpu_set_u32(*dpu, "len_nf", len_nf);
     dpu_set_u32(*dpu, "len_cf", len_cf);
     dpu_set_u32(*dpu, "level", 0);
     dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
+
+    if (prt == Row) {
+      dpu_set_u32(*dpu, "cf_from", len_cf * i);
+      dpu_set_u32(*dpu, "cf_to", len_cf * (i + 1));
+    }
 
     uint32_t *cf = i < col_div ? frontier : 0;      // Add root node to cf of all DPUs of fist row.
     uint32_t *nf = i % col_div == 0 ? frontier : 0; // Add root node to nf of all DPUs of first col.
@@ -791,19 +770,14 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_src_vtx_row(set, dpu, len_frontier, len_cf, len_nf, total_nodes, num_nodes);
+    bfs_src_vtx_row(set, dpu, len_cf, len_nf, total_nodes, num_nodes);
   else if (prt == Col)
-    bfs_src_vtx_col(set, dpu, len_frontier, len_cf, len_nf, total_nodes, num_neighbors);
+    bfs_src_vtx_col(set, dpu, len_cf, len_nf, total_nodes, num_neighbors);
   else
     bfs_src_vtx_2d(set, dpu, len_frontier, len_cf, len_nf, col_div, total_nodes, num_neighbors);
 
-  // Print node levels. // TODO investigate
-  if (prt == Row)
-    print_node_levels_1d(set, dpu, total_nodes, num_nodes);
-  else if (prt == Col)
-    print_node_levels_1d(set, dpu, total_nodes, num_neighbors);
-  else
-    print_node_levels_2d(set, dpu, total_nodes, num_neighbors);
+  // Print node levels.
+  print_node_levels(set, dpu, total_nodes, len_nl);
 }
 
 int main(int argc, char **argv) {
