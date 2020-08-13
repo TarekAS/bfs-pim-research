@@ -24,10 +24,10 @@ __host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
 __host __mram_ptr uint32_t *edges;     // DPU's share of edges.
 
 // Chunks data.
-__host uint32_t len_nf;  // Length of next_frontier.
-__host uint32_t len_cf;  // Length of curr_frontier.
-__host uint32_t cf_from; // [cf_from, cf_to[ ranges node chunks of this DPU.
-__host uint32_t cf_to;
+__host uint32_t len_nf;     // Length of next_frontier.
+__host uint32_t len_cf;     // Length of curr_frontier.
+__host uint32_t len_nf_tsk; // Length of next_frontier per tasklet.
+__host uint32_t len_cf_tsk; // Length of curr_frontier per tasklet.
 
 // BFS data.
 __host uint32_t level;                     // Current level of the BFS.
@@ -41,28 +41,21 @@ MUTEX_INIT(nf_mutex);
 
 int main() {
 
-  uint32_t nf_per_tasklet = len_nf / NR_TASKLETS;
-  uint32_t idx = nf_per_tasklet * me();
-  uint32_t lim = idx + nf_per_tasklet;
+  const uint32_t idx_nf = me() * len_nf_tsk;
+  const uint32_t lim_nf = idx_nf + len_nf_tsk;
+  const uint32_t idx_cf = me() * len_cf_tsk;
+  const uint32_t lim_cf = idx_cf + len_cf_tsk;
 
   // Loop over next_frontier.
-  for (uint32_t c = idx; c < lim; ++c) {
-
-    uint32_t f = next_frontier[c]; // Cache nf.
-    next_frontier[c] = 0;          // Clear nf.
-    visited[c] |= f;               // Update visited nodes.
-
-    // Take DPU part of next_frontier as curr_frontier, and update node levels according to curr_frontier.
-    if (c >= cf_from && c < cf_to)
-      for (uint32_t b = 0; b < 32; ++b)
-        if (f & 1 << b % 32)
-          node_levels[(c - cf_from) * 32 + b] = level;
+  for (uint32_t c = idx_nf; c < lim_nf; ++c) {
+    visited[c] |= next_frontier[c]; // Update visited nodes.
+    next_frontier[c] = 0;           // Clear nf.
   }
 
   barrier_wait(&nf_barrier);
 
   // Loop over curr_frontier.
-  for (uint32_t c = me(); c < len_cf; c += NR_TASKLETS) {
+  for (uint32_t c = idx_cf; c < lim_cf; ++c) {
 
     uint32_t f = curr_frontier[c];
 
@@ -70,6 +63,7 @@ int main() {
     for (uint32_t b = 0; b < 32; ++b)
       if (f & 1 << b % 32) {
         uint32_t node = c * 32 + b;
+        node_levels[node] = level; // Update node level.
 
         // Get node_ptrs of this node.
         uint32_t from = node_ptrs[node];

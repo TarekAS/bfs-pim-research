@@ -516,7 +516,7 @@ void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t to
   free(node_levels);
 }
 
-void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_nodes) {
+void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf) {
 
   uint32_t *frontier = calloc(len_nf, sizeof(uint32_t));
   uint32_t *nf_tmp = calloc(len_nf, sizeof(uint32_t));
@@ -564,7 +564,7 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
   free(frontier);
 }
 
-void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_neighbors) {
+void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf) {
 
   uint32_t *frontier = calloc(len_cf, sizeof(uint32_t));
   uint32_t level = 0;
@@ -605,7 +605,7 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
   free(frontier);
 }
 
-void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t col_div, uint32_t total_nodes, uint32_t num_neighbors) {
+void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t col_div) {
 
   uint32_t *frontier = calloc(len_frontier, sizeof(uint32_t));
   uint32_t *nf_tmp = calloc(len_nf, sizeof(uint32_t));
@@ -702,16 +702,13 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_edges);
 
     // Copy BFS data.
+    dpu_set_u32(*dpu, "level", 0);
     dpu_set_u32(*dpu, "len_nf", len_nf);
     dpu_set_u32(*dpu, "len_cf", len_cf);
-    dpu_set_u32(*dpu, "level", 0);
+    dpu_set_u32(*dpu, "len_nf_tsk", len_nf / NR_TASKLETS);
+    dpu_set_u32(*dpu, "len_cf_tsk", len_cf / NR_TASKLETS);
     dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
-
-    if (prt == Row) {
-      dpu_set_u32(*dpu, "cf_from", len_cf * i);
-      dpu_set_u32(*dpu, "cf_to", len_cf * (i + 1));
-    }
 
     uint32_t *cf = i < col_div ? frontier : 0;      // Add root node to cf of all DPUs of fist row.
     uint32_t *nf = i % col_div == 0 ? frontier : 0; // Add root node to nf of all DPUs of first col.
@@ -727,11 +724,11 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_vtx_row(set, dpu, len_cf, len_nf, total_nodes, num_nodes);
+    bfs_vtx_row(set, dpu, len_cf, len_nf);
   else if (prt == Col)
-    bfs_vtx_col(set, dpu, len_cf, len_nf, total_nodes, num_neighbors);
+    bfs_vtx_col(set, dpu, len_cf, len_nf);
   else
-    bfs_vtx_2d(set, dpu, len_frontier, len_cf, len_nf, col_div, total_nodes, num_neighbors);
+    bfs_vtx_2d(set, dpu, len_frontier, len_cf, len_nf, col_div);
 
   // Print node levels.
   print_node_levels(set, dpu, total_nodes, len_nl);
@@ -803,11 +800,11 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_vtx_row(set, dpu, len_cf, len_nf, total_nodes, num_nodes);
+    bfs_vtx_row(set, dpu, len_cf, len_nf);
   else if (prt == Col)
-    bfs_vtx_col(set, dpu, len_cf, len_nf, total_nodes, num_neighbors);
+    bfs_vtx_col(set, dpu, len_cf, len_nf);
   else
-    bfs_vtx_2d(set, dpu, len_frontier, len_cf, len_nf, col_div, total_nodes, num_neighbors);
+    bfs_vtx_2d(set, dpu, len_frontier, len_cf, len_nf, col_div);
 
   // Print node levels.
   print_node_levels(set, dpu, total_nodes, len_nl);
