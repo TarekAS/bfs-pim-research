@@ -218,11 +218,11 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
   else if (*alg == SrcVtx && *prt == _2D)
     *bin_path = "bin/src-vtx";
   else if (*alg == DstVtx && *prt == Row)
-    *bin_path = "bin/dst-vtx-row";
+    *bin_path = "bin/dst-vtx";
   else if (*alg == DstVtx && *prt == Col)
-    *bin_path = "bin/dst-vtx-col";
+    *bin_path = "bin/dst-vtx";
   else if (*alg == DstVtx && *prt == _2D)
-    *bin_path = "bin/dst-vtx-2d";
+    *bin_path = "bin/dst-vtx";
   else if (*alg == Edge && *prt == Row)
     *bin_path = "bin/edge-row";
   else if (*alg == Edge && *prt == Col)
@@ -457,15 +457,17 @@ struct CSC coo_to_csc(struct COO coo) {
       .col_idxs = coo.row_idxs,
       .row_idxs = coo.col_idxs,
       .num_cols = coo.num_rows,
-      .num_rows = coo.num_cols};
+      .num_rows = coo.num_cols,
+      .num_edges = coo.num_edges};
 
   // Convert to CSR, then CSC.
   struct CSR csr = coo_to_csr(coo_trs);
   struct CSC csc = {
       .col_ptrs = csr.row_ptrs,
       .row_idxs = csr.col_idxs,
-      .num_cols = csr.num_cols,
-      .num_rows = csr.num_rows};
+      .num_cols = csr.num_rows,
+      .num_rows = csr.num_cols,
+      .num_edges = coo.num_edges};
 
   return csc;
 }
@@ -514,35 +516,32 @@ void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t to
   free(node_levels);
 }
 
-void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chunks) {
+void bfs_dst_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf) {
 
-  uint32_t *next_frontier = calloc(total_chunks, sizeof(uint32_t));
+  uint32_t *next_frontier = calloc(len_cf, sizeof(uint32_t));
   uint32_t done = true;
   uint32_t level = 0;
 
   while (true) {
-    PRINT_INFO("Level %u", level);
 
     // Launch DPUs.
-    DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
+    PRINT_INFO("Level %u", level);
+    DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
 
     // Concatenate all next_frontiers.
     uint32_t write_idx = 0;
-    int i = 0;
-    _DPU_FOREACH_I(set, dpu, i) {
-      uint32_t num_chunks;
-      dpu_get_u32(dpu, "num_chunks", &num_chunks);
-      dpu_get_mram_array_u32(dpu, "next_frontier",
-                             &next_frontier[write_idx], num_chunks);
-      write_idx += num_chunks;
-
-      // Get DPU logs.
-      // PRINT_INFO("DPU %d", i);
+    uint32_t i = 0;
+    _DPU_FOREACH_I(*set, *dpu, i) {
       // DPU_ASSERT(dpu_log_read(dpu, stdout));
+
+      uint32_t len_nf;
+      dpu_get_u32(*dpu, "len_nf", &len_nf);
+      dpu_get_mram_array_u32(*dpu, "next_frontier", &next_frontier[write_idx], len_nf);
+      write_idx += len_nf;
     }
 
     // Check if done.
-    for (uint32_t c = 0; c < total_chunks; ++c)
+    for (uint32_t c = 0; c < len_cf; ++c)
       if (next_frontier[c] != 0) {
         done = false;
         break;
@@ -553,10 +552,10 @@ void bfs_dst_vtx(struct dpu_set_t set, struct dpu_set_t dpu, uint32_t total_chun
     done = true;
     ++level;
 
-    // Update level and currentFrontier of DPUs.
-    dpu_set_u32(set, "level", level);
-    _DPU_FOREACH_I(set, dpu, i) {
-      dpu_set_mram_array_u32(dpu, "currFrontier", next_frontier, total_chunks);
+    // Update level and curr_frontier of DPUs.
+    dpu_set_u32(*set, "level", level);
+    _DPU_FOREACH_I(*set, *dpu, i) {
+      dpu_set_mram_array_u32(*dpu, "curr_frontier", next_frontier, len_cf);
     }
   }
 
@@ -739,7 +738,6 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
-
   uint32_t i = 0;
   _DPU_FOREACH_I(*set, *dpu, i) {
 
@@ -765,7 +763,10 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, len_nf);
   }
 
+  // Free resources.
   free(frontier);
+  for (int i = 0; i < num_dpu; ++i)
+    free_csr(csr[i]);
 
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
@@ -775,6 +776,83 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     bfs_src_vtx_col(set, dpu, len_cf, len_nf, total_nodes, num_neighbors);
   else
     bfs_src_vtx_2d(set, dpu, len_frontier, len_cf, len_nf, col_div, total_nodes, num_neighbors);
+
+  // Print node levels.
+  print_node_levels(set, dpu, total_nodes, len_nl);
+}
+
+void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, int num_dpu, enum Partition prt) {
+
+  // Convert COO partitions to CSC.
+  struct CSC *csc = malloc(num_dpu * sizeof(struct CSC));
+  for (int i = 0; i < num_dpu; ++i) {
+    csc[i] = coo_to_csc(coo[i]);
+    free_coo(coo[i]);
+  }
+
+  // Compute BFS metadata.
+  uint32_t num_nodes = csc[0].num_rows;
+  uint32_t num_neighbors = csc[0].num_cols;
+  uint32_t len_cf = num_nodes / 32;
+  uint32_t len_nf = num_neighbors / 32;
+  uint32_t total_nodes, len_nl;
+  uint32_t row_div = 1, col_div = 1;
+
+  PRINT_DEBUG("num_nodes=%u num_neighbors=%u", num_nodes, num_neighbors);
+
+  if (prt == Row) {
+
+  } else if (prt == Col) {
+    col_div = num_dpu;
+    total_nodes = num_nodes;
+    len_nl = num_neighbors;
+  } else {
+  }
+
+  uint32_t len_frontier = total_nodes / 32;
+  uint32_t *frontier = calloc(len_frontier, sizeof(uint32_t));
+  frontier[0] = 1; // Set root node.
+
+  // Copy data to MRAM.
+  PRINT_INFO("Populating MRAM.");
+  uint32_t i = 0;
+  _DPU_FOREACH_I(*set, *dpu, i) {
+
+    // Copy CSR data.
+    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csc[i].col_ptrs, num_neighbors + 1);
+    dpu_insert_mram_array_u32(*dpu, "edges", csc[i].row_idxs, csc[i].num_edges);
+
+    // Copy BFS data.
+    dpu_set_u32(*dpu, "len_nf", len_nf);
+    dpu_set_u32(*dpu, "level", 0);
+    dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
+    dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
+
+    if (prt == Col) {
+      dpu_set_u32(*dpu, "cf_from", len_nf * i);
+      dpu_set_u32(*dpu, "cf_to", len_nf * (i + 1));
+    }
+
+    uint32_t *cf = i < col_div ? frontier : 0;      // Add root node to cf of all DPUs of fist row.
+    uint32_t *nf = i % col_div == 0 ? frontier : 0; // Add root node to nf of all DPUs of first col.
+
+    dpu_insert_mram_array_u32(*dpu, "curr_frontier", frontier, len_cf);
+    dpu_insert_mram_array_u32(*dpu, "next_frontier", 0, len_nf);
+  }
+
+  // Free resources.
+  free(frontier);
+  for (int i = 0; i < num_dpu; ++i)
+    free_csc(csc[i]);
+
+  // Start BFS algorithm.
+  PRINT_INFO("Starting BFS algorithm.");
+  if (prt == Row)
+    bfs_dst_vtx_col(set, dpu, len_cf);
+  else if (prt == Col)
+    bfs_dst_vtx_col(set, dpu, len_cf);
+  else
+    bfs_dst_vtx_col(set, dpu, len_cf);
 
   // Print node levels.
   print_node_levels(set, dpu, total_nodes, len_nl);
@@ -801,7 +879,7 @@ int main(int argc, char **argv) {
   if (alg == SrcVtx)
     start_src_vtx(&set, &dpu, coo_prts, num_dpu, prt);
   else if (alg == DstVtx) {
-    // TODO
+    start_dst_vtx(&set, &dpu, coo_prts, num_dpu, prt);
   } else if (alg == Edge) {
     // TODO
   }
