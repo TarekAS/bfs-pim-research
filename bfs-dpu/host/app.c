@@ -516,7 +516,7 @@ void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t to
   free(node_levels);
 }
 
-void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_nodes) {
+void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf, uint32_t total_nodes, uint32_t num_nodes) {
 
   uint32_t *frontier = calloc(len_nf, sizeof(uint32_t));
   uint32_t *nf_tmp = calloc(len_nf, sizeof(uint32_t));
@@ -545,12 +545,15 @@ void bfs_src_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_
     if (done)
       break;
     done = true;
-    ++level;
 
-    // Update level and next_frontier of DPUs.
+    // Update level.
+    ++level;
     dpu_set_u32(*set, "level", level);
+
+    // Update next_frontier and current_frontier.
     _DPU_FOREACH_I(*set, *dpu, i) {
       dpu_set_mram_array_u32(*dpu, "next_frontier", frontier, len_nf);
+      dpu_set_mram_array_u32(*dpu, "curr_frontier", &frontier[i * len_cf], len_cf);
     }
 
     // Clear frontier.
@@ -724,7 +727,7 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_src_vtx_row(set, dpu, len_cf, len_nf, total_nodes, num_nodes);
+    bfs_vtx_row(set, dpu, len_cf, len_nf, total_nodes, num_nodes);
   else if (prt == Col)
     bfs_vtx_col(set, dpu, len_cf, len_nf, total_nodes, num_neighbors);
   else
@@ -754,7 +757,7 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   if (prt == Row) {
     row_div = num_dpu;
     total_nodes = num_neighbors;
-    len_nl = num_nodes;
+    len_nl = num_neighbors;
   } else if (prt == Col) {
     col_div = num_dpu;
     total_nodes = num_nodes;
@@ -800,7 +803,7 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_src_vtx_row(set, dpu, len_cf, len_nf, total_nodes, num_nodes); // TODO
+    bfs_vtx_row(set, dpu, len_cf, len_nf, total_nodes, num_nodes);
   else if (prt == Col)
     bfs_vtx_col(set, dpu, len_cf, len_nf, total_nodes, num_neighbors);
   else

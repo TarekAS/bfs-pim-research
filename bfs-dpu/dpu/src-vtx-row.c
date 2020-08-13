@@ -53,14 +53,10 @@ int main() {
     visited[c] |= f;               // Update visited nodes.
 
     // Take DPU part of next_frontier as curr_frontier, and update node levels according to curr_frontier.
-    if (c >= cf_from && c < cf_to) {
-      uint32_t ridx = c - cf_from; // Relative index of curr_frontier in next_frontier.
-      curr_frontier[ridx] = f;
-
+    if (c >= cf_from && c < cf_to)
       for (uint32_t b = 0; b < 32; ++b)
         if (f & 1 << b % 32)
-          node_levels[ridx * 32 + b] = level;
-    }
+          node_levels[(c - cf_from) * 32 + b] = level;
   }
 
   barrier_wait(&nf_barrier);
