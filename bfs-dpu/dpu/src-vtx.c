@@ -48,15 +48,8 @@ int main() {
 
   // Loop over next_frontier.
   for (uint32_t c = idx_nf; c < lim_nf; ++c) {
-
-    uint32_t f = next_frontier[c]; // Cache nf.
-    visited[c] |= f;               // Update visited nodes.
-    next_frontier[c] = 0;          // Clear nf.
-
-    // Update node_levels according to the next_frontier.
-    for (uint32_t b = 0; b < 32; ++b)
-      if (f & (1 << (b % 32)))
-        node_levels[c * 32 + b] = level;
+    visited[c] |= next_frontier[c]; // Update visited nodes.
+    next_frontier[c] = 0;           // Clear nf.
   }
 
   barrier_wait(&nf_barrier);
@@ -70,6 +63,7 @@ int main() {
     for (uint32_t b = 0; b < 32; ++b)
       if (f & 1 << b % 32) {
         uint32_t node = c * 32 + b;
+        node_levels[node] = level; // Update node level.
 
         // Get node_ptrs of this node.
         uint32_t from = node_ptrs[node];

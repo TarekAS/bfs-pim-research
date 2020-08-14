@@ -24,8 +24,8 @@ __host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
 __host __mram_ptr uint32_t *edges;     // DPU's share of edges.
 
 // Chunks data.
-__host uint32_t len_nf; // Length of next_frontier.
-__host uint32_t len_cf; // Length of curr_frontier. // TODO: so far unused
+__host uint32_t len_nf;     // Length of next_frontier.
+__host uint32_t len_nf_tsk; // Length of next_frontier per tasklet.
 
 // BFS data.
 __host uint32_t level;                     // Current level of the BFS.
@@ -38,18 +38,17 @@ BARRIER_INIT(nf_barrier, NR_TASKLETS);
 
 int main() {
 
-  uint32_t nf_per_tasklet = len_nf / NR_TASKLETS;
-  uint32_t idx = nf_per_tasklet * me();
-  uint32_t lim = idx + nf_per_tasklet;
+  const uint32_t idx_nf = me() * len_nf_tsk;
+  const uint32_t lim_nf = idx_nf + len_nf_tsk;
 
-  // For each chunk of the curr_frontier belonging to this DPU.
-  for (uint32_t c = idx; c < lim; ++c) {
+  // Loop over next_frontier.
+  for (uint32_t c = idx_nf; c < lim_nf; ++c) {
 
-    uint32_t f = next_frontier[c]; // Cache nf.
-    next_frontier[c] = 0;          // Clear nf.
-    visited[c] |= f;               // Update visited nodes.
+    uint32_t f = next_frontier[c];  // Cache nf.
+    visited[c] |= next_frontier[c]; // Update visited nodes.
+    next_frontier[c] = 0;           // Clear nf.
 
-    // Update node_levels according to the curr_frontier.
+    // Update node_levels according to the next_frontier.
     for (uint32_t b = 0; b < 32; ++b)
       if (f & (1 << (b % 32)))
         node_levels[c * 32 + b] = level;
@@ -58,7 +57,7 @@ int main() {
   barrier_wait(&nf_barrier);
 
   // Loop over next_frontier.
-  for (uint32_t c = idx; c < lim; ++c) {
+  for (uint32_t c = idx_nf; c < lim_nf; ++c) {
 
     uint32_t nonvis = ~visited[c];
 
