@@ -224,11 +224,11 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
   else if (*alg == DstVtx && *prt == _2D)
     *bin_path = "bin/dst-vtx";
   else if (*alg == Edge && *prt == Row)
-    *bin_path = "bin/edge-row";
+    *bin_path = "bin/edge";
   else if (*alg == Edge && *prt == Col)
-    *bin_path = "bin/edge-col";
+    *bin_path = "bin/edge";
   else if (*alg == Edge && *prt == _2D)
-    *bin_path = "bin/edge-2d";
+    *bin_path = "bin/edge";
 }
 
 // Load coo-formated file into memory.
@@ -809,6 +809,77 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   print_node_levels(set, dpu, total_nodes, len_nl, 1);
 }
 
+void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, int num_dpu, enum Partition prt) {
+
+  // Compute BFS metadata.
+  uint32_t num_nodes = coo[0].num_rows;
+  uint32_t num_neighbors = coo[0].num_cols;
+  uint32_t len_cf = num_nodes / 32;
+  uint32_t len_nf = num_neighbors / 32;
+  uint32_t total_nodes, len_nl;
+  uint32_t row_div = 1, col_div = 1;
+
+  if (prt == Row) {
+    row_div = num_dpu;
+    total_nodes = num_neighbors;
+    len_nl = num_neighbors;
+  } else if (prt == Col) {
+    col_div = num_dpu;
+    total_nodes = num_nodes;
+    len_nl = num_neighbors;
+  } else {
+    nearest_factors(num_dpu, &row_div, &col_div);
+    total_nodes = num_nodes * num_dpu / col_div;
+    len_nl = num_neighbors;
+  }
+
+  uint32_t len_frontier = total_nodes / 32;
+  uint32_t *frontier = calloc(len_frontier, sizeof(uint32_t));
+  frontier[0] = 1; // Set root node.
+
+  // Copy data to MRAM.
+  PRINT_INFO("Populating MRAM.");
+  uint32_t i = 0;
+  _DPU_FOREACH_I(*set, *dpu, i) {
+
+    // Copy COO data.
+    uint32_t num_edges = coo[i].num_edges;
+    dpu_set_u32(*dpu, "num_edges", num_edges);
+    dpu_set_u32(*dpu, "num_edges_tsk", num_edges / NR_TASKLETS);
+    dpu_insert_mram_array_u32(*dpu, "nodes", coo[i].row_idxs, num_edges);
+    dpu_insert_mram_array_u32(*dpu, "neighbors", coo[i].col_idxs, num_edges);
+
+    // Copy BFS data.
+    dpu_set_u32(*dpu, "level", 0);
+    dpu_set_u32(*dpu, "len_nf", len_nf);
+    dpu_set_u32(*dpu, "len_nf_tsk", len_nf / NR_TASKLETS);
+    dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
+    dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
+
+    uint32_t *cf = i < col_div ? frontier : 0;      // Add root node to cf of all DPUs of fist row.
+    uint32_t *nf = i % col_div == 0 ? frontier : 0; // Add root node to nf of all DPUs of first col.
+    dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, len_cf);
+    dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, len_nf);
+  }
+
+  // Free resources.
+  free(frontier);
+  for (int i = 0; i < num_dpu; ++i)
+    free_coo(coo[i]);
+
+  // Start BFS algorithm.
+  PRINT_INFO("Starting BFS algorithm.");
+  if (prt == Row)
+    bfs_vtx_row(set, dpu, len_cf, len_nf);
+  else if (prt == Col)
+    bfs_vtx_col(set, dpu, len_cf, len_nf);
+  else
+    bfs_vtx_2d(set, dpu, len_frontier, len_cf, len_nf, col_div);
+
+  // Print node levels.
+  print_node_levels(set, dpu, total_nodes, len_nl, 1);
+}
+
 int main(int argc, char **argv) {
 
   int num_dpu = 8;
@@ -832,7 +903,7 @@ int main(int argc, char **argv) {
   else if (alg == DstVtx) {
     start_dst_vtx(&set, &dpu, coo_prts, num_dpu, prt);
   } else if (alg == Edge) {
-    // TODO
+    start_edge(&set, &dpu, coo_prts, num_dpu, prt);
   }
 
   DPU_ASSERT(dpu_free(set));
