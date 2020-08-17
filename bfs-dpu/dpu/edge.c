@@ -31,6 +31,7 @@ __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current fron
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
 __host __mram_ptr uint32_t *node_levels;   // OUTPUT of the BFS.
 
+// Note: these are overriden by compiler flags.
 #ifndef NR_TASKLETS
 #define NR_TASKLETS 16
 #endif
@@ -41,11 +42,13 @@ MUTEX_INIT(nf_mutex);
 int main() {
 
   const uint32_t idx_nf = me() * len_nf_tsk;
-  const uint32_t lim_nf = idx_nf + len_nf_tsk;
   const uint32_t idx_edges = me() * num_edges_tsk;
+  uint32_t lim_nf = idx_nf + len_nf_tsk;
   uint32_t lim_edges = idx_edges + num_edges_tsk;
   if (lim_edges > num_edges)
     lim_edges = num_edges;
+  if (me() == NR_TASKLETS - 1)
+    lim_nf = len_nf;
 
   // Loop over next_frontier.
   for (uint32_t c = idx_nf; c < lim_nf; ++c) {

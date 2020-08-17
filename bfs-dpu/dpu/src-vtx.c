@@ -12,7 +12,7 @@
 #define ROUND_UP_TO_MULTIPLE_OF_8(x) ((((x) + 7) / 8) * 8)
 #define ROUND_UP_TO_MULTIPLE_OF_32(x) ((((x)-1) / 32 + 1) * 32)
 
-// Note: this is overriden by compiler flags.
+// Note: these are overriden by compiler flags.
 #ifndef NR_TASKLETS
 #define NR_TASKLETS 16
 #endif
@@ -42,9 +42,13 @@ MUTEX_INIT(nf_mutex);
 int main() {
 
   const uint32_t idx_nf = me() * len_nf_tsk;
-  const uint32_t lim_nf = idx_nf + len_nf_tsk;
   const uint32_t idx_cf = me() * len_cf_tsk;
-  const uint32_t lim_cf = idx_cf + len_cf_tsk;
+  uint32_t lim_nf = idx_nf + len_nf_tsk;
+  uint32_t lim_cf = idx_cf + len_cf_tsk;
+  if (me() == NR_TASKLETS - 1) {
+    lim_nf = len_nf;
+    lim_cf = len_cf;
+  }
 
   // Loop over next_frontier.
   for (uint32_t c = idx_nf; c < lim_nf; ++c) {

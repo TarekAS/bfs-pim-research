@@ -1,4 +1,4 @@
-// Contains the CPU version of BFS for comparison purposes.
+// Contains the CPU version of non-parallel BFS for comparison purposes.
 
 #include <stdint.h>
 #include <stdio.h>
@@ -179,9 +179,9 @@ void bfs(struct Graph *graph, int startVertex) {
 
       if (graph->visited[adjVertex] == 0) {
         graph->visited[adjVertex] = 1;
-        node_levels[adjVertex] =
-            node_levels[currentVertex] + 1; // Distance from root.
-        enqueue(q, adjVertex);
+        node_levels[adjVertex] = node_levels[currentVertex] + 1; // Distance from root.
+        if (node_levels)
+          enqueue(q, adjVertex);
       }
       temp = temp->next;
     }

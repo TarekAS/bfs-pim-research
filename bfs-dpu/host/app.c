@@ -20,7 +20,7 @@
 #define ROUND_UP_TO_MULTIPLE_OF_8(x) ((((x) + 7) / 8) * 8)
 #define ROUND_UP_TO_MULTIPLE_OF_32(x) ((((x)-1) / 32 + 1) * 32)
 
-// Note: this is overriden by compiler flags.
+// Note: these are overriden by compiler flags.
 #ifndef NR_TASKLETS
 #define NR_TASKLETS 16
 #endif
@@ -232,7 +232,7 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
 }
 
 // Load coo-formated file into memory.
-// Pads nodes to multiple of lcm of 32 and n, and to a minimum of n * 32.
+// Pads the number of nodes to guarantee divisibility by n and further divisibility by 32.
 struct COO load_coo(char *file, uint32_t n) {
 
   if (access(file, F_OK) == -1) {
@@ -254,32 +254,20 @@ struct COO load_coo(char *file, uint32_t n) {
   coo.row_idxs = malloc(num_edges * sizeof(uint32_t));
   coo.col_idxs = malloc(num_edges * sizeof(uint32_t));
 
-  // Pad number of nodes to a minimum of n * 32.
-  uint32_t min = n * 32;
-  if (num_nodes < min) {
-    PRINT_WARNING("Number of nodes too low. Setting number of nodes to %u.", min);
-    num_nodes = min;
+  // Pad the number of nodes to guarantee divisibility by n and then by 32.
+  uint32_t old = num_nodes;
+  if (num_nodes % n != 0)
+    num_nodes += n - num_nodes % n;
+
+  uint32_t chunk_size = num_nodes / n;
+  if (chunk_size % 32 != 0) {
+    chunk_size += 32 - chunk_size % 32;
+    num_nodes = chunk_size * n;
   }
 
-  // Find Least Common Multiple of n and 32.
-  uint32_t lcm = 0;
-  uint32_t lar = (n > 32) ? n : 32;
-  uint32_t small = (n > 32) ? 32 : n;
-
-  for (int i = lar;; i += lar)
-    if (i % small == 0) {
-      lcm = i;
-      break;
-    }
-
-  if (num_nodes % lcm != 0) {
-
-    uint32_t padding = lcm - num_nodes % lcm;
-    if (padding != 0) {
-      PRINT_WARNING("Number of nodes must be multiple of %u. Padding with %u extra nodes.", lcm, padding);
-      num_nodes += padding;
-    }
-  }
+  uint32_t padding = num_nodes - old;
+  if (padding != 0)
+    PRINT_WARNING("Padding number of nodes with %u extra nodes.", padding);
 
   coo.num_rows = num_nodes;
   coo.num_cols = num_nodes;
