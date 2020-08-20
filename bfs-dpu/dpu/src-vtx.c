@@ -14,7 +14,7 @@
 
 // Note: these are overriden by compiler flags.
 #ifndef NR_TASKLETS
-#define NR_TASKLETS 16
+#define NR_TASKLETS 11
 #endif
 
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
@@ -65,7 +65,7 @@ int main() {
     for (uint32_t b = 0; b < 32; ++b)
       if (f & 1 << b % 32) {
         uint32_t node = c * 32 + b;
-        node_levels[node] = level; // Update node level.
+        node_levels[node] = level; // Update node levels.
 
         // Get node_ptrs of this node.
         uint32_t from = node_ptrs[node];

@@ -21,27 +21,24 @@
 
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
 
-// CSR data.
+// CSC data.
 __host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
 __host __mram_ptr uint32_t *edges;     // DPU's share of edges.
 
 // BFS data.
 __host uint32_t level;                     // Current level of the BFS.
 __host uint32_t len_nf;                    // Length of next_frontier.
-__host uint32_t len_cf;                    // Length of curr_frontier.
 __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
 __host __mram_ptr uint32_t *node_levels;   // OUTPUT of the BFS.
 
-// WRAM caches.
 __dma_aligned uint32_t F_CACHES[NR_TASKLETS][BLOCK_INTS];
 __dma_aligned uint32_t VIS_CACHES[NR_TASKLETS][BLOCK_INTS];
 __dma_aligned uint32_t EDGE_CACHES[NR_TASKLETS][BLOCK_INTS];
 __dma_aligned uint32_t NL_CACHES[NR_TASKLETS][32];
 
 BARRIER_INIT(nf_barrier, NR_TASKLETS);
-MUTEX_INIT(nf_mutex);
 
 int main() {
 
@@ -54,12 +51,21 @@ int main() {
   for (uint32_t i = me() * BLOCK_INTS; i < len_nf; i += BLOCK_INTS * NR_TASKLETS) {
     mram_read(&visited[i], vis, BLOCK_SIZE);
     mram_read(&next_frontier[i], f, BLOCK_SIZE);
+
     for (uint32_t j = 0; j < BLOCK_INTS; ++j) {
       uint32_t nf = f[j];
       if (nf == 0)
         continue;
+
       vis[j] |= nf; // Update visited nodes.
       f[j] = 0;     // Clear nf.
+
+      // Update node levels.
+      mram_read(&node_levels[(i + j) * 32], nl, 32 * sizeof(uint32_t));
+      for (uint32_t b = 0; b < 32; ++b)
+        if (nf & (1 << (b % 32)))
+          nl[b] = level;
+      mram_write(nl, &node_levels[(i + j) * 32], 32 * sizeof(uint32_t));
     }
     mram_write(vis, &visited[i], BLOCK_SIZE);
     mram_write(f, &next_frontier[i], BLOCK_SIZE);
@@ -67,29 +73,28 @@ int main() {
 
   barrier_wait(&nf_barrier);
 
-  // Loop over curr_frontier.
-  for (uint32_t i = me() * BLOCK_INTS; i < len_cf; i += BLOCK_INTS * NR_TASKLETS) {
-    mram_read(&curr_frontier[i], f, BLOCK_SIZE);
+  // Loop over visited.
+  for (uint32_t i = me() * BLOCK_INTS; i < len_nf; i += BLOCK_INTS * NR_TASKLETS) {
+    mram_read(&visited[i], vis, BLOCK_SIZE);
+    mram_read(&next_frontier[i], f, BLOCK_SIZE);
 
-    for (uint32_t j = 0; j < BLOCK_INTS; j++) {
+    for (uint32_t j = 0; j < BLOCK_INTS && i + j < len_nf; ++j) {
 
-      uint32_t cf = f[j];
-      if (cf == 0)
+      uint32_t nonvis = ~vis[j];
+      if (nonvis == 0)
         continue;
 
-      mram_read(&node_levels[(i + j) * 32], nl, 32 * sizeof(uint32_t));
-
-      // For each set node in the curr_frontier.
-      for (uint32_t b = 0; b < 32; ++b) {
-        if (cf & 1 << b % 32) {
+      // For each nonvisited node in the chunk.
+      for (uint32_t b = 0; b < 32; ++b)
+        if (nonvis & (1 << (b % 32))) {
           uint32_t node = (i + j) * 32 + b;
-          nl[b] = level; // Update node levels.
+          uint32_t offset = 1 << (node % 32);
 
           // Get node_ptrs of this node.
           uint32_t from = node_ptrs[node];
           uint32_t to = node_ptrs[node + 1];
 
-          // For each not visited neighbor of this node, add it to next_frontier.
+          // For each neighbor.
           for (uint32_t n = from; n < to; n += BLOCK_INTS) {
 
             // Handle &edges[from] not being 8-byte aligned.
@@ -102,18 +107,17 @@ int main() {
 
             for (; k < BLOCK_INTS && n + k < to; ++k) {
               uint32_t neighbor = edg[k];
-              uint32_t offset = 1 << neighbor % 32;
+              uint32_t ncf = curr_frontier[neighbor / 32]; // neighbor's curr_frontier chunk.
 
-              if (!(visited[neighbor / 32] & offset)) {
-                mutex_lock(nf_mutex);
-                next_frontier[neighbor / 32] |= offset;
-                mutex_unlock(nf_mutex);
+              // If any neighbor is in curr_frontier, add node to next_frontier.
+              if (ncf & (1 << (neighbor % 32))) {
+                f[j] |= offset;
+                break;
               }
             }
           }
         }
-      }
-      mram_write(nl, &node_levels[(i + j) * 32], 32 * sizeof(uint32_t));
     }
+    mram_write(f, &next_frontier[i], BLOCK_SIZE);
   }
 }

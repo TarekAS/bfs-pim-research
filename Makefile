@@ -8,6 +8,7 @@ all:
 	dpu-upmem-dpurte-clang -DNR_TASKLETS=$(NR_TASKLETS) -O2 -o bin/dst-vtx bfs-dpu/dpu/dst-vtx.c
 	dpu-upmem-dpurte-clang -DNR_TASKLETS=$(NR_TASKLETS) -O2 -o bin/edge bfs-dpu/dpu/edge.c
 	dpu-upmem-dpurte-clang -DNR_TASKLETS=$(NR_TASKLETS) -DBLOCK_SIZE=$(BLOCK_SIZE) -O2 -o bin/src-vtx-dma bfs-dpu/dpu/src-vtx-dma.c
+	dpu-upmem-dpurte-clang -DNR_TASKLETS=$(NR_TASKLETS) -DBLOCK_SIZE=$(BLOCK_SIZE) -O2 -o bin/dst-vtx-dma bfs-dpu/dpu/dst-vtx-dma.c
 
 test:
 	gcc --std=c99 bfs-dpu/host/test.c -D "_POSIX_C_SOURCE=2" -o bin/test -lm `dpu-pkg-config --cflags --libs dpu`
@@ -19,5 +20,7 @@ clean:
 	rm -f bin/src-vtx
 	rm -f bin/dst-vtx
 	rm -f bin/edge
+	rm -f bin/src-vtx-dma
+	rm -f bin/dst-vtx-dma
 	rm -f bin/test
 	rm -f bin/testdpu

@@ -12,7 +12,7 @@
 
 // Note: these are overriden by compiler flags.
 #ifndef NR_TASKLETS
-#define NR_TASKLETS 16
+#define NR_TASKLETS 11
 #endif
 
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
@@ -21,12 +21,9 @@ __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to th
 __host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
 __host __mram_ptr uint32_t *edges;     // DPU's share of edges.
 
-// Chunks data.
-__host uint32_t len_nf;     // Length of next_frontier.
-__host uint32_t len_nf_tsk; // Length of next_frontier per tasklet.
-
 // BFS data.
 __host uint32_t level;                     // Current level of the BFS.
+__host uint32_t len_nf;                    // Length of next_frontier.
 __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
@@ -36,6 +33,7 @@ BARRIER_INIT(nf_barrier, NR_TASKLETS);
 
 int main() {
 
+  const uint32_t len_nf_tsk = len_nf / NR_TASKLETS;
   const uint32_t idx_nf = me() * len_nf_tsk;
   uint32_t lim_nf = idx_nf + len_nf_tsk;
   if (me() == NR_TASKLETS - 1)
