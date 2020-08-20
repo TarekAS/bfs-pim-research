@@ -19,16 +19,12 @@ __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to th
 
 // COO data.
 __host uint32_t num_edges;             // Length of nodes/dst_nodes.
-__host uint32_t num_edges_tsk;         // Number of edges per tasklet.
 __host __mram_ptr uint32_t *nodes;     // DPU's share of node idxs.
 __host __mram_ptr uint32_t *neighbors; // DPU's share of neighbor idxs.
 
-// Chunks data.
-__host uint32_t len_nf;     // Length of next_frontier.
-__host uint32_t len_nf_tsk; // Length of next_frontier per tasklet.
-
 // BFS data.
 __host uint32_t level;                     // Current level of the BFS.
+__host uint32_t len_nf;                    // Length of next_frontier.
 __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
@@ -39,6 +35,8 @@ MUTEX_INIT(nf_mutex);
 
 int main() {
 
+  const uint32_t len_nf_tsk = len_nf / NR_TASKLETS;
+  const uint32_t num_edges_tsk = num_edges / NR_TASKLETS;
   const uint32_t idx_nf = me() * len_nf_tsk;
   const uint32_t idx_edges = me() * num_edges_tsk;
   uint32_t lim_nf = idx_nf + len_nf_tsk;
