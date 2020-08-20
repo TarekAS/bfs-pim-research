@@ -679,8 +679,8 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   }
 
   uint32_t len_frontier = total_nodes / 32;
-  uint32_t *frontier = calloc(len_frontier + BLOCK_SIZE, sizeof(uint32_t));
-  frontier[0] = 1; // Set root node.
+  uint32_t *frontier = calloc(len_frontier + BLOCK_SIZE, sizeof(uint32_t)); // +BLOCK_SIZE for safe margin of copy.
+  frontier[0] = 1;                                                          // Set root node.
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
@@ -695,12 +695,10 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     dpu_set_u32(*dpu, "level", 0);
     dpu_set_u32(*dpu, "len_nf", len_nf);
     dpu_set_u32(*dpu, "len_cf", len_cf);
-    dpu_set_u32(*dpu, "len_nf_tsk", len_nf / NR_TASKLETS);
-    dpu_set_u32(*dpu, "len_cf_tsk", len_cf / NR_TASKLETS);
     dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
 
-    // Add root node to cf of all DPUs of fist row and to nf of all DPUs of first col.
+    // Add root node to cf of all DPUs of first row and to nf of all DPUs of first col.
     uint32_t *cf = i < col_div ? frontier : 0;
     uint32_t *nf = i % col_div == 0 ? frontier : 0;
 

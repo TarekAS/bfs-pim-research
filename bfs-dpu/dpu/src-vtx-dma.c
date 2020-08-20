@@ -25,14 +25,10 @@ __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to th
 __host __mram_ptr uint32_t *node_ptrs; // DPU's share of node_ptrs.
 __host __mram_ptr uint32_t *edges;     // DPU's share of edges.
 
-// Chunks data.
-__host uint32_t len_nf;     // Length of next_frontier.
-__host uint32_t len_cf;     // Length of curr_frontier.
-__host uint32_t len_nf_tsk; // Length of next_frontier per tasklet.
-__host uint32_t len_cf_tsk; // Length of curr_frontier per tasklet.
-
 // BFS data.
 __host uint32_t level;                     // Current level of the BFS.
+__host uint32_t len_nf;                    // Length of next_frontier.
+__host uint32_t len_cf;                    // Length of curr_frontier.
 __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
