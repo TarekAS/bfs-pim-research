@@ -835,8 +835,8 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
   }
 
   uint32_t len_frontier = total_nodes / 32;
-  uint32_t *frontier = calloc(len_frontier, sizeof(uint32_t));
-  frontier[0] = 1; // Set root node.
+  uint32_t *frontier = calloc(len_frontier + BLOCK_SIZE, sizeof(uint32_t)); // +BLOCK_SIZE for safe margin of copy.
+  frontier[0] = 1;                                                          // Set root node.
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
@@ -852,13 +852,20 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
     // Copy BFS data.
     dpu_set_u32(*dpu, "level", 0);
     dpu_set_u32(*dpu, "len_nf", len_nf);
-    dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
-    dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
 
-    uint32_t *cf = i < col_div ? frontier : 0;      // Add root node to cf of all DPUs of fist row.
-    uint32_t *nf = i % col_div == 0 ? frontier : 0; // Add root node to nf of all DPUs of first col.
-    dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, len_cf);
-    dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, len_nf);
+    // Add root node to cf of all DPUs of first row and to nf of all DPUs of first col.
+    uint32_t *cf = i < col_div ? frontier : 0;
+    uint32_t *nf = i % col_div == 0 ? frontier : 0;
+
+    // Make sure arrays can be safely partitioned by NR_TASKLETS and BLOCK_SIZE.
+    uint32_t lcf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_cf, NR_TASKLETS), BLOCK_SIZE);
+    uint32_t lnf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nf, NR_TASKLETS), BLOCK_SIZE);
+    uint32_t lnl = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nl, NR_TASKLETS), BLOCK_SIZE);
+
+    dpu_insert_mram_array_u32(*dpu, "visited", 0, lnf);
+    dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, lnf);
+    dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, lcf);
+    dpu_insert_mram_array_u32(*dpu, "node_levels", 0, lnl);
   }
 
   // Free resources.
