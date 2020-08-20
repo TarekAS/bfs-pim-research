@@ -846,14 +846,12 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
     // Copy COO data.
     uint32_t num_edges = coo[i].num_edges;
     dpu_set_u32(*dpu, "num_edges", num_edges);
-    dpu_set_u32(*dpu, "num_edges_tsk", num_edges / NR_TASKLETS);
     dpu_insert_mram_array_u32(*dpu, "nodes", coo[i].row_idxs, num_edges);
     dpu_insert_mram_array_u32(*dpu, "neighbors", coo[i].col_idxs, num_edges);
 
     // Copy BFS data.
     dpu_set_u32(*dpu, "level", 0);
     dpu_set_u32(*dpu, "len_nf", len_nf);
-    dpu_set_u32(*dpu, "len_nf_tsk", len_nf / NR_TASKLETS);
     dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
 
