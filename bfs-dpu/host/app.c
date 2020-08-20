@@ -12,17 +12,18 @@
 
 #define _POSIX_C_SOURCE 2 // To use GNU's getopt.
 #define PRINT_ERROR(fmt, ...) fprintf(stderr, "\033[0;31mERROR:\033[0m   " fmt "\n", ##__VA_ARGS__)
-#define PRINT_WARNING(fmt, ...) fprintf(stderr, "\033[0;35mWARNING:\033[0m " fmt "\n", ##__VA_ARGS__)
+#define PRINT_WARNING(fmt, ...) fprintf(stderr, "\033[0;35mWARN:\033[0m    " fmt "\n", ##__VA_ARGS__)
 #define PRINT_INFO(fmt, ...) fprintf(stderr, "\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
 #define PRINT_STATUS(status) fprintf(stderr, "Status: %s\n", dpu_api_status_to_string(status))
 #define PRINT_DEBUG(fmt, ...) fprintf(stderr, "\033[0;34mDEBUG:\033[0m   " fmt "\n", ##__VA_ARGS__)
-
-#define ROUND_UP_TO_MULTIPLE_OF_8(x) ((((x) + 7) / 8) * 8)
-#define ROUND_UP_TO_MULTIPLE_OF_32(x) ((((x)-1) / 32 + 1) * 32)
+#define ROUND_UP_TO_MULTIPLE(x, y) ((((x)-1) / y + 1) * y)
 
 // Note: these are overriden by compiler flags.
 #ifndef NR_TASKLETS
-#define NR_TASKLETS 16
+#define NR_TASKLETS 11
+#endif
+#ifndef BLOCK_SIZE
+#define BLOCK_SIZE 256
 #endif
 
 enum Algorithm {
@@ -79,6 +80,7 @@ void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, ui
 
   // Copy the data to MRAM.
   size_t size = length * sizeof(uint32_t);
+  size += size % 8; // Guarantee address will be aligned on 8 bytes.
   DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size, 0));
 
   // Increment end of used MRAM pointer.
@@ -212,11 +214,11 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
   *file = argv[optind];
 
   if (*alg == SrcVtx && *prt == Row)
-    *bin_path = "bin/src-vtx";
+    *bin_path = "bin/src-vtx-dma";
   else if (*alg == SrcVtx && *prt == Col)
-    *bin_path = "bin/src-vtx";
+    *bin_path = "bin/src-vtx-dma";
   else if (*alg == SrcVtx && *prt == _2D)
-    *bin_path = "bin/src-vtx";
+    *bin_path = "bin/src-vtx-dma";
   else if (*alg == DstVtx && *prt == Row)
     *bin_path = "bin/dst-vtx";
   else if (*alg == DstVtx && *prt == Col)
@@ -520,7 +522,7 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     // Union next_frontiers.
     uint32_t i = 0;
     _DPU_FOREACH_I(*set, *dpu, i) {
-      // DPU_ASSERT(dpu_log_read(*dpu, stdout));
+      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
 
       dpu_get_mram_array_u32(*dpu, "next_frontier", nf_tmp, len_nf);
       for (uint32_t c = 0; c < len_nf; ++c) {
@@ -567,7 +569,7 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     // Concatenate all next_frontiers.
     uint32_t i = 0;
     _DPU_FOREACH_I(*set, *dpu, i) {
-      // DPU_ASSERT(dpu_log_read(*dpu, stdout));
+      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
       dpu_get_mram_array_u32(*dpu, "next_frontier", &frontier[i * len_nf], len_nf);
     }
 
@@ -609,7 +611,7 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
     // Concatenate by column and union by row the next_frontiers of each DPU.
     uint32_t i = 0;
     _DPU_FOREACH_I(*set, *dpu, i) {
-      // DPU_ASSERT(dpu_log_read(*dpu, stdout));
+      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
 
       dpu_get_mram_array_u32(*dpu, "next_frontier", nf_tmp, len_nf);
       for (uint32_t c = 0; c < len_nf; ++c)
@@ -677,7 +679,7 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   }
 
   uint32_t len_frontier = total_nodes / 32;
-  uint32_t *frontier = calloc(len_frontier, sizeof(uint32_t));
+  uint32_t *frontier = calloc(len_frontier + BLOCK_SIZE, sizeof(uint32_t));
   frontier[0] = 1; // Set root node.
 
   // Copy data to MRAM.
@@ -698,10 +700,16 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     dpu_insert_mram_array_u32(*dpu, "visited", 0, len_nf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, len_nl);
 
-    uint32_t *cf = i < col_div ? frontier : 0;      // Add root node to cf of all DPUs of fist row.
-    uint32_t *nf = i % col_div == 0 ? frontier : 0; // Add root node to nf of all DPUs of first col.
-    dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, len_cf);
-    dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, len_nf);
+    // Add root node to cf of all DPUs of fist row and to nf of all DPUs of first col.
+    uint32_t *cf = i < col_div ? frontier : 0;
+    uint32_t *nf = i % col_div == 0 ? frontier : 0;
+
+    // Make sure curr/next_frontier can be safely partitioned by NR_TASKLETS and BLOCK_SIZE.
+    uint32_t lcf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_cf, NR_TASKLETS), BLOCK_SIZE);
+    uint32_t lnf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nf, NR_TASKLETS), BLOCK_SIZE);
+
+    dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, lcf);
+    dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, lnf);
   }
 
   // Free resources.
