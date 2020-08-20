@@ -9,8 +9,6 @@
 #include <stdio.h>
 
 #define PRINT_DEBUG(fmt, ...) printf("\033[0;34mDEBUG:\033[0m   " fmt "\n", ##__VA_ARGS__)
-#define ROUND_UP_TO_MULTIPLE_OF_8(x) ((((x) + 7) / 8) * 8)
-#define ROUND_UP_TO_MULTIPLE_OF_32(x) ((((x)-1) / 32 + 1) * 32)
 
 // Note: these are overriden by compiler flags.
 #ifndef NR_TASKLETS

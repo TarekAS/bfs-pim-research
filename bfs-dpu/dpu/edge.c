@@ -10,6 +10,11 @@
 
 #define PRINT_DEBUG(fmt, ...) printf("\033[0;34mDEBUG:\033[0m    " fmt "\n", ##__VA_ARGS__)
 
+// Note: these are overriden by compiler flags.
+#ifndef NR_TASKLETS
+#define NR_TASKLETS 11
+#endif
+
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
 
 // COO data.
@@ -28,11 +33,6 @@ __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
 __host __mram_ptr uint32_t *node_levels;   // OUTPUT of the BFS.
-
-// Note: these are overriden by compiler flags.
-#ifndef NR_TASKLETS
-#define NR_TASKLETS 16
-#endif
 
 BARRIER_INIT(nf_barrier, NR_TASKLETS);
 MUTEX_INIT(nf_mutex);
