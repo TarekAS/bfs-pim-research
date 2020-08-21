@@ -83,7 +83,7 @@ int main() {
     mram_read(&nodes[i], svtx, BLOCK_SIZE);
     mram_read(&neighbors[i], dvtx, BLOCK_SIZE);
 
-    for (uint32_t j = 0; j < BLOCK_INTS; ++j) {
+    for (uint32_t j = 0; j < BLOCK_INTS && j + i < num_edges; ++j) {
       uint32_t node = svtx[j];
       if (curr_frontier[node / 32] & (1 << (node % 32))) {
         uint32_t neighbor = dvtx[j];

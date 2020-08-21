@@ -226,11 +226,11 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
   else if (*alg == DstVtx && *prt == _2D)
     *bin_path = "bin/dst-vtx-dma";
   else if (*alg == Edge && *prt == Row)
-    *bin_path = "bin/edge";
+    *bin_path = "bin/edge-dma";
   else if (*alg == Edge && *prt == Col)
-    *bin_path = "bin/edge";
+    *bin_path = "bin/edge-dma";
   else if (*alg == Edge && *prt == _2D)
-    *bin_path = "bin/edge";
+    *bin_path = "bin/edge-dma";
 }
 
 // Load coo-formated file into memory.
