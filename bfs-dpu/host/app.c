@@ -3,6 +3,7 @@
 #include <dpu.h>
 #include <dpu_log.h>
 #include <dpu_memory.h>
+#include <dpu_types.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -81,7 +82,7 @@ void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, ui
   // Copy the data to MRAM.
   size_t size = length * sizeof(uint32_t);
   size += size % 8; // Guarantee address will be aligned on 8 bytes.
-  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size, 0));
+  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size));
 
   // Increment end of used MRAM pointer.
   p_used_mram_end += size;
@@ -98,8 +99,8 @@ void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, ui
  */
 void dpu_set_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
   mram_addr_t p_array;
-  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                      // Get address of array in MRAM.
-  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_array, (const uint8_t *)src, length * sizeof(uint32_t), 0)); // Copy data.
+  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                   // Get address of array in MRAM.
+  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_array, (const uint8_t *)src, length * sizeof(uint32_t))); // Copy data.
 }
 
 /**
@@ -112,8 +113,8 @@ void dpu_set_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint3
  */
 void dpu_get_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst, uint32_t length) {
   mram_addr_t p_array;
-  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));                  // Get address of array in MRAM.
-  DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, (uint8_t *)dst, p_array, length * sizeof(uint32_t), 0)); // Copy data.
+  DPU_ASSERT(dpu_copy_from(dpu, symbol_name, 0, &p_array, sizeof(mram_addr_t)));               // Get address of array in MRAM.
+  DPU_ASSERT(dpu_copy_from_mram(dpu.dpu, (uint8_t *)dst, p_array, length * sizeof(uint32_t))); // Copy data.
 }
 
 /**
