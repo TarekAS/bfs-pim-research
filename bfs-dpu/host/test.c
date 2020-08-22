@@ -19,7 +19,7 @@ void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, ui
 
   // Copy the data to MRAM.
   size_t size = length * sizeof(uint32_t);
-  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size, 0));
+  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size));
 
   // Increment end of used MRAM pointer.
   p_used_mram_end += size;
@@ -36,7 +36,7 @@ void dpu_insert_to_mram_uint64_array(struct dpu_set_t dpu, const char *symbol_na
 
   // Copy the data to MRAM.
   size_t size = length * sizeof(uint64_t);
-  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size, 0));
+  DPU_ASSERT(dpu_copy_to_mram(dpu.dpu, p_used_mram_end, (const uint8_t *)src, size));
 
   // Increment end of used MRAM pointer.
   p_used_mram_end += size;

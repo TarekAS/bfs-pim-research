@@ -63,6 +63,12 @@ struct CSC {
   uint32_t *row_idxs;
 };
 
+struct dpu_symbol_t mram_heap_sym;
+struct dpu_symbol_t level_sym;
+
+mram_addr_t cf_addr;
+mram_addr_t nf_addr;
+
 /**
  * @fn dpu_insert_mram_array_u32
  * @brief Inserts data into the MRAM of a DPU at the last used MRAM address.
@@ -487,7 +493,7 @@ void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t to
   uint32_t *nl_tmp = calloc(len_nl, sizeof(uint32_t));
 
   uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
+  DPU_FOREACH(*set, *dpu, i) {
     dpu_get_mram_array_u32(*dpu, "node_levels", nl_tmp, len_nl);
     for (uint32_t n = 0; n < len_nl; ++n) {
       uint32_t nreal = n + i / div * len_nl % total_nodes;
@@ -521,31 +527,31 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
 
     // Union next_frontiers.
+    DPU_ASSERT(dpu_prepare_xfer(*set, nf_tmp));
     uint32_t i = 0;
     _DPU_FOREACH_I(*set, *dpu, i) {
-      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
-
-      dpu_get_mram_array_u32(*dpu, "next_frontier", nf_tmp, len_nf);
+      DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
       for (uint32_t c = 0; c < len_nf; ++c) {
         frontier[c] |= nf_tmp[c];
         if (done && frontier[c] != 0)
           done = false;
       }
+      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
     }
 
     if (done)
       break;
     done = true;
 
-    // Update level.
+    // Update level, next_frontier and current_frontier.
     ++level;
-    dpu_set_u32(*set, "level", level);
-
-    // Update next_frontier and current_frontier.
-    _DPU_FOREACH_I(*set, *dpu, i) {
-      dpu_set_mram_array_u32(*dpu, "next_frontier", frontier, len_nf);
-      dpu_set_mram_array_u32(*dpu, "curr_frontier", &frontier[i * len_cf], len_cf);
+    DPU_ASSERT(dpu_copy_to_symbol(*set, level_sym, 0, &level, sizeof(uint32_t)));
+    DPU_ASSERT(dpu_prepare_xfer(*set, frontier));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_FOREACH(*set, *dpu, i) {
+      DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i * len_cf]));
     }
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, len_cf * sizeof(uint32_t), DPU_XFER_DEFAULT));
 
     // Clear frontier.
     memset(frontier, 0, len_nf * sizeof(uint32_t));
@@ -569,10 +575,11 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
 
     // Concatenate all next_frontiers.
     uint32_t i = 0;
-    _DPU_FOREACH_I(*set, *dpu, i) {
-      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
-      dpu_get_mram_array_u32(*dpu, "next_frontier", &frontier[i * len_nf], len_nf);
+    DPU_FOREACH(*set, *dpu, i) {
+      DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i * len_nf]));
+      // DPU_ASSERT(dpu_log_read(*set, stderr));
     }
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
 
     // Check if done.
     for (uint32_t c = 0; c < len_cf; ++c)
@@ -587,10 +594,9 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
 
     // Update level and curr_frontier of DPUs.
     ++level;
-    dpu_set_u32(*set, "level", level);
-    _DPU_FOREACH_I(*set, *dpu, i) {
-      dpu_set_mram_array_u32(*dpu, "curr_frontier", frontier, len_cf);
-    }
+    DPU_ASSERT(dpu_copy_to_symbol(*set, level_sym, 0, &level, sizeof(uint32_t)));
+    DPU_ASSERT(dpu_prepare_xfer(*set, frontier));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, len_cf * sizeof(uint32_t), DPU_XFER_DEFAULT));
   }
 
   free(frontier);
@@ -610,13 +616,13 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
 
     // Concatenate by column and union by row the next_frontiers of each DPU.
+    DPU_ASSERT(dpu_prepare_xfer(*set, nf_tmp));
     uint32_t i = 0;
-    _DPU_FOREACH_I(*set, *dpu, i) {
-      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
-
-      dpu_get_mram_array_u32(*dpu, "next_frontier", nf_tmp, len_nf);
+    DPU_FOREACH(*set, *dpu, i) {
+      DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
       for (uint32_t c = 0; c < len_nf; ++c)
         frontier[c + i * len_nf % len_frontier] |= nf_tmp[c];
+      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
     }
 
     // Check if done.
@@ -630,15 +636,17 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
       break;
     done = true;
 
-    // Update level.
+    // Update level, next_frontier and current_frontier.
     ++level;
-    dpu_set_u32(*set, "level", level);
-
-    // Update next_frontier and current_frontier.
-    _DPU_FOREACH_I(*set, *dpu, i) {
-      dpu_set_mram_array_u32(*dpu, "next_frontier", &frontier[i * len_nf % len_frontier], len_nf);
-      dpu_set_mram_array_u32(*dpu, "curr_frontier", &frontier[i / col_div * len_cf], len_cf);
+    DPU_ASSERT(dpu_copy_to_symbol(*set, level_sym, 0, &level, sizeof(uint32_t)));
+    DPU_FOREACH(*set, *dpu, i) {
+      DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i * len_nf % len_frontier]));
     }
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_FOREACH(*set, *dpu, i) {
+      DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i / col_div * len_cf]));
+    }
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, len_cf * sizeof(uint32_t), DPU_XFER_DEFAULT));
 
     // Clear frontier.
     memset(frontier, 0, len_frontier * sizeof(uint32_t));
@@ -686,11 +694,7 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
   uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-
-    // Copy CSR data.
-    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
-    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_edges);
+  DPU_FOREACH(*set, *dpu, i) {
 
     // Copy BFS data.
     dpu_set_u32(*dpu, "level", 0);
@@ -710,6 +714,14 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, lnf);
     dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, lcf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, lnl);
+
+    // Copy CSR data. Variable sized buffers must be copied last.
+    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csr[i].row_ptrs, num_nodes + 1);
+    dpu_insert_mram_array_u32(*dpu, "edges", csr[i].col_idxs, csr[i].num_edges);
+
+    // Cache some MRAM addresses (address must be the same for all DPUs).
+    DPU_ASSERT(dpu_copy_from(*dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
+    DPU_ASSERT(dpu_copy_from(*dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
   }
 
   // Free resources.
@@ -768,11 +780,7 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
   uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-
-    // Copy CSR data.
-    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csc[i].col_ptrs, num_neighbors + 1);
-    dpu_insert_mram_array_u32(*dpu, "edges", csc[i].row_idxs, csc[i].num_edges);
+  DPU_FOREACH(*set, *dpu, i) {
 
     // Copy BFS data.
     dpu_set_u32(*dpu, "level", 0);
@@ -791,6 +799,14 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, lnf);
     dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, lcf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, lnl);
+
+    // Copy CSR data. Variable sized buffers must be copied last.
+    dpu_insert_mram_array_u32(*dpu, "node_ptrs", csc[i].col_ptrs, num_neighbors + 1);
+    dpu_insert_mram_array_u32(*dpu, "edges", csc[i].row_idxs, csc[i].num_edges);
+
+    // Cache some MRAM addresses (address must be the same for all DPUs).
+    DPU_ASSERT(dpu_copy_from(*dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
+    DPU_ASSERT(dpu_copy_from(*dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
   }
 
   // Free resources.
@@ -842,13 +858,7 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
   uint32_t i = 0;
-  _DPU_FOREACH_I(*set, *dpu, i) {
-
-    // Copy COO data.
-    uint32_t num_edges = coo[i].num_edges;
-    dpu_set_u32(*dpu, "num_edges", num_edges);
-    dpu_insert_mram_array_u32(*dpu, "nodes", coo[i].row_idxs, num_edges);
-    dpu_insert_mram_array_u32(*dpu, "neighbors", coo[i].col_idxs, num_edges);
+  DPU_FOREACH(*set, *dpu, i) {
 
     // Copy BFS data.
     dpu_set_u32(*dpu, "level", 0);
@@ -867,6 +877,16 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
     dpu_insert_mram_array_u32(*dpu, "next_frontier", nf, lnf);
     dpu_insert_mram_array_u32(*dpu, "curr_frontier", cf, lcf);
     dpu_insert_mram_array_u32(*dpu, "node_levels", 0, lnl);
+
+    // Copy COO data. Variable sized buffers must be copied last.
+    uint32_t num_edges = coo[i].num_edges;
+    dpu_set_u32(*dpu, "num_edges", num_edges);
+    dpu_insert_mram_array_u32(*dpu, "nodes", coo[i].row_idxs, num_edges);
+    dpu_insert_mram_array_u32(*dpu, "neighbors", coo[i].col_idxs, num_edges);
+
+    // Cache some MRAM addresses (address must be the same for all DPUs).
+    DPU_ASSERT(dpu_copy_from(*dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
+    DPU_ASSERT(dpu_copy_from(*dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
   }
 
   // Free resources.
@@ -887,6 +907,12 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
   print_node_levels(set, dpu, total_nodes, len_nl, 1);
 }
 
+// Cache DPU variable symbols for better performance.
+void load_symbols(struct dpu_program_t *program) {
+  DPU_ASSERT(dpu_get_symbol(program, "__sys_used_mram_end", &mram_heap_sym));
+  DPU_ASSERT(dpu_get_symbol(program, "level", &level_sym));
+}
+
 int main(int argc, char **argv) {
 
   int num_dpu = 8;
@@ -898,8 +924,10 @@ int main(int argc, char **argv) {
 
   PRINT_INFO("Allocating %u DPUs, %u tasklets each.", num_dpu, NR_TASKLETS);
   struct dpu_set_t set, dpu;
+  struct dpu_program_t *program;
   DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
-  DPU_ASSERT(dpu_load(set, bin_path, NULL));
+  DPU_ASSERT(dpu_load(set, bin_path, &program));
+  load_symbols(program);
 
   struct COO coo = load_coo(file, num_dpu);
   struct COO *coo_prts = partition_coo(coo, num_dpu, prt);
