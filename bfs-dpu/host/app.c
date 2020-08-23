@@ -63,6 +63,8 @@ struct CSC {
   uint32_t *row_idxs;
 };
 
+int num_dpu = 8;
+
 struct dpu_symbol_t mram_heap_sym;
 struct dpu_symbol_t level_sym;
 
@@ -529,7 +531,7 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     // Union next_frontiers.
     DPU_ASSERT(dpu_prepare_xfer(*set, nf_tmp));
     uint32_t i = 0;
-    _DPU_FOREACH_I(*set, *dpu, i) {
+    DPU_FOREACH(*set, *dpu, i) {
       DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
       for (uint32_t c = 0; c < len_nf; ++c) {
         frontier[c] |= nf_tmp[c];
@@ -915,7 +917,6 @@ void load_symbols(struct dpu_program_t *program) {
 
 int main(int argc, char **argv) {
 
-  int num_dpu = 8;
   enum Algorithm alg = SrcVtx;
   enum Partition prt = Row;
   char *bin_path;
