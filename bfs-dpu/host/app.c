@@ -63,7 +63,8 @@ struct CSC {
   uint32_t *row_idxs;
 };
 
-int num_dpu = 8;
+FILE *out;
+uint32_t num_dpu = 8;
 
 struct dpu_symbol_t mram_heap_sym;
 struct dpu_symbol_t level_sym;
@@ -156,11 +157,11 @@ void nearest_factors(uint32_t n, uint32_t *first, uint32_t *second) {
 }
 
 // Parse CLI args and options.
-void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **bin_path, char **file) {
+void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **bin_path, char **file, char **out_file) {
   bool is_prt_set = false;
   int c;
   opterr = 0;
-  while ((c = getopt(argc, argv, "n:a:p:")) != -1)
+  while ((c = getopt(argc, argv, "n:a:p:o:")) != -1)
     switch (c) {
     case 'n':
       *num_dpu = atoi(optarg);
@@ -172,19 +173,21 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
     case 'a':
       if (strcmp(optarg, "src") == 0) {
         PRINT_INFO("Algorithm: Source-Vertex-based BFS.");
+        *bin_path = "bin/src-vtx-dma";
         *alg = SrcVtx;
         if (!is_prt_set)
           *prt = Row;
       } else if (strcmp(optarg, "dst") == 0) {
         PRINT_INFO("Algorithm: Destination-Vertex-based BFS.");
+        *bin_path = "bin/dst-vtx-dma";
         *alg = DstVtx;
         if (!is_prt_set)
           *prt = Col;
-      } else if (strcmp(optarg, "edge") == 0) {
-        PRINT_INFO("Algorithm: Edge-based BFS.");
-        *alg = Edge;
-        if (!is_prt_set)
-          *prt = _2D;
+      } else if (strcmp(optarg, "dst-vtx-2d") == 0) {
+        PRINT_INFO("BFS: Destination-Vertex with 2D partitioning.");
+        *bin_path = "bin/edge-dma";
+        *alg = DstVtx;
+        *prt = _2D;
       } else {
         PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge");
         exit(1);
@@ -192,13 +195,13 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       break;
     case 'p':
       if (strcmp(optarg, "row") == 0) {
-        PRINT_INFO("1D Row partitioning (source-nodes).");
+        PRINT_INFO("Partitioning: 1D Row (source-nodes).");
         *prt = Row;
       } else if (strcmp(optarg, "col") == 0) {
-        PRINT_INFO("1D Column partitioning (destination-nodes/neighbors).");
+        PRINT_INFO("Partitioning: 1D Column (destination-nodes/neighbors).");
         *prt = Col;
       } else if (strcmp(optarg, "2d") == 0) {
-        PRINT_INFO("2D partitioning (both source-nodes and destination-nodes).");
+        PRINT_INFO("Partitioning: 2D (both source-nodes and destination-nodes).");
         *prt = _2D;
       } else {
         PRINT_ERROR("Incorrect -p argument. Supported partitioning: row | col | 2d");
@@ -206,9 +209,12 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
       }
       is_prt_set = true;
       break;
+    case 'o':
+      *out_file = optarg;
+      break;
     case '?':
     default:
-      PRINT_ERROR("Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d>");
+      PRINT_ERROR("Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d> -o <output_file>");
       exit(1);
     }
 
@@ -222,24 +228,8 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
   }
   *file = argv[optind];
 
-  if (*alg == SrcVtx && *prt == Row)
-    *bin_path = "bin/src-vtx-dma";
-  else if (*alg == SrcVtx && *prt == Col)
-    *bin_path = "bin/src-vtx-dma";
-  else if (*alg == SrcVtx && *prt == _2D)
-    *bin_path = "bin/src-vtx-dma";
-  else if (*alg == DstVtx && *prt == Row)
-    *bin_path = "bin/dst-vtx-dma";
-  else if (*alg == DstVtx && *prt == Col)
-    *bin_path = "bin/dst-vtx-dma";
-  else if (*alg == DstVtx && *prt == _2D)
-    *bin_path = "bin/dst-vtx-dma";
-  else if (*alg == Edge && *prt == Row)
-    *bin_path = "bin/edge-dma";
-  else if (*alg == Edge && *prt == Col)
-    *bin_path = "bin/edge-dma";
-  else if (*alg == Edge && *prt == _2D)
-    *bin_path = "bin/edge-dma";
+  if (*out_file == NULL)
+    *out_file = "/dev/null";
 }
 
 // Load coo-formated file into memory.
@@ -491,6 +481,7 @@ void free_csc(struct CSC csc) {
 
 // Fetches and prints node levels from DPUs.
 void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes, uint32_t len_nl, uint32_t div) {
+  fprintf(out, "node\tlevel\n");
   uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
   uint32_t *nl_tmp = calloc(len_nl, sizeof(uint32_t));
 
@@ -508,7 +499,7 @@ void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t to
     uint32_t level = node_levels[node];
     if (node != 0 && level == 0) // Filters out "padded" rows.
       continue;
-    printf("node_levels[%u]=%u\n", node, node_levels[node]);
+    fprintf(out, "%u\t%u\n", node, node_levels[node]);
   }
 
   free(nl_tmp);
@@ -525,7 +516,6 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
   while (true) {
 
     // Launch DPUs.
-    PRINT_INFO("Level %u", level);
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
 
     // Union next_frontiers.
@@ -540,6 +530,39 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
       }
       // DPU_ASSERT(dpu_log_read(*dpu, stderr));
     }
+
+    ///// BENCHMARK DPU
+    // Get number of cycles from each DPU.
+    uint64_t cycles[num_dpu][NR_TASKLETS];
+    i = 0;
+    DPU_FOREACH(*set, *dpu, i) {
+      DPU_ASSERT(dpu_prepare_xfer(*dpu, &cycles[i]));
+    }
+    DPU_ASSERT(dpu_push_xfer(*set, DPU_XFER_FROM_DPU, "cycles", 0, sizeof(uint64_t) * NR_TASKLETS, DPU_XFER_DEFAULT));
+
+    // Get max cycles per DPU (among tasklets).
+    uint64_t max_dpu_cycles[num_dpu];
+    DPU_FOREACH(*set, *dpu, i) {
+      uint32_t max = 0;
+      for (uint32_t t = 0; t < NR_TASKLETS; t++) {
+        uint64_t tasklet_cycles = cycles[i][t];
+        if (tasklet_cycles > max)
+          max = tasklet_cycles;
+      }
+      max_dpu_cycles[i] = max;
+    }
+
+    // Get avg and max DPU cycles per level (i.e. worst-performing DPU).
+    uint64_t avg_cycles_lvl = 0, max_cycles_lvl = 0;
+    for (int d = 0; d < num_dpu; ++d) {
+      uint64_t max_dpu = max_dpu_cycles[d];
+      avg_cycles_lvl += max_dpu;
+      if (max_dpu > max_cycles_lvl)
+        max_cycles_lvl = max_dpu;
+    }
+    avg_cycles_lvl /= num_dpu;
+    printf("%lu %lu\n", max_cycles_lvl, avg_cycles_lvl);
+    /////
 
     if (done)
       break;
@@ -572,7 +595,6 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
   while (true) {
 
     // Launch DPUs.
-    PRINT_INFO("Level %u", level);
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
 
     // Concatenate all next_frontiers.
@@ -614,7 +636,6 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
   while (true) {
 
     // Launch DPUs.
-    PRINT_INFO("Level %u", level);
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
 
     // Concatenate by column and union by row the next_frontiers of each DPU.
@@ -910,7 +931,7 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
 }
 
 // Cache DPU variable symbols for better performance.
-void load_symbols(struct dpu_program_t *program) {
+void cache_symbols(struct dpu_program_t *program) {
   DPU_ASSERT(dpu_get_symbol(program, "__sys_used_mram_end", &mram_heap_sym));
   DPU_ASSERT(dpu_get_symbol(program, "level", &level_sym));
 }
@@ -921,14 +942,16 @@ int main(int argc, char **argv) {
   enum Partition prt = Row;
   char *bin_path;
   char *file = NULL;
-  parse_args(argc, argv, &num_dpu, &alg, &prt, &bin_path, &file);
+  char *out_file = NULL;
+  parse_args(argc, argv, &num_dpu, &alg, &prt, &bin_path, &file, &out_file);
+  out = fopen(out_file, "w");
 
-  PRINT_INFO("Allocating %u DPUs, %u tasklets each.", num_dpu, NR_TASKLETS);
+  PRINT_INFO("Allocating %u DPUs, %u tasklets each. Using %u bytes blocks for MRAM DMA.", num_dpu, NR_TASKLETS, BLOCK_SIZE);
   struct dpu_set_t set, dpu;
   struct dpu_program_t *program;
   DPU_ASSERT(dpu_alloc(num_dpu, NULL, &set));
   DPU_ASSERT(dpu_load(set, bin_path, &program));
-  load_symbols(program);
+  cache_symbols(program);
 
   struct COO coo = load_coo(file, num_dpu);
   struct COO *coo_prts = partition_coo(coo, num_dpu, prt);
@@ -942,6 +965,7 @@ int main(int argc, char **argv) {
     start_edge(&set, &dpu, coo_prts, num_dpu, prt);
   }
 
+  fclose(out);
   DPU_ASSERT(dpu_free(set));
   return 0;
 }

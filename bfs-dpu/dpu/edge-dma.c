@@ -44,7 +44,11 @@ __dma_aligned uint32_t NL_CACHES[NR_TASKLETS][32];
 BARRIER_INIT(nf_barrier, NR_TASKLETS);
 MUTEX_INIT(nf_mutex);
 
+__host uint64_t cycles[NR_TASKLETS];
+
 int main() {
+  if (me() == 0)
+    (void)perfcounter_config(COUNT_CYCLES, true);
 
   uint32_t *f = F_CACHES[me()];
   uint32_t *vis = VIS_CACHES[me()];
@@ -96,4 +100,5 @@ int main() {
       }
     }
   }
+  cycles[me()] = perfcounter_get();
 }
