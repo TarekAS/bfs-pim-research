@@ -1,15 +1,24 @@
-""" Determine for each algorithm-partitioning pair the optimal
-    number of tasklets per DPU and the optmial MRAM DMA block size.
-    RESULT: consistently good performance with NR_TASKLETS=11 and BLOCK_SIZE=256
-            across all algorithm combinations. Will be used as default.
+""" Determine, given the datafile and the expected bfs results,
+    for each algorithm-partitioning pair the optimal number of tasklets
+    per DPU and the optmial MRAM DMA block size.
+
+    USAGE:  python3 bench_cyles.py <coo_data_file> <expected_results>
+
+    We havedetermined consistently good performance with NR_TASKLETS=11
+    and BLOCK_SIZE=256 across all algorithm combinations.
+    Recommended as default.
 """
 
 import subprocess
 import filecmp
 import math
 import os
+import sys
 import logging
 logging.basicConfig(filename='benchmark_cycles.log', level=logging.INFO)
+
+datafile = sys.argv[1]
+expected_node_levels = sys.argv[2]
 
 num_dpus = 8
 
@@ -21,21 +30,18 @@ algs = [("src", "row"), ("src", "col"), ("src", "2d"),
         ("dst", "row"), ("dst", "col"), ("dst", "2d"),
         ("edge", "row"), ("edge", "col"), ("edge", "2d")]
 
-# (data_file, expected_node_levels) pairs
-data_sets = [("loc-gowalla_edges.txt", "res_true_gowalla"),
-             ("loc-brightkite_edges.txt", "res_true_brightkite")]
 configs = []
 
 
-def bench_dpu_cycles(datafile, expected_node_levels, alg, prt, nr_tsk, block_size):
+def bench_dpu_cycles(alg, prt, nr_tsk, block_size):
     """ Runs BFS on selected datafile with the specified configuration,
         and returns the total DPU cycles.
     """
-    id_str = f"{alg}_{prt}_{nr_tsk}_{block_size}_{datafile}"
+    id_str = f"{alg}_{prt}_{nr_tsk}_{block_size}"
     res = f"res_{id_str}"
 
-    make = f"NR_TASKLETS={nr_tsk} BLOCK_SIZE={block_size} make all"
-    run = f"./bin/bfs -n {num_dpus} -a {alg} -p {prt} -o {res} data/{datafile}"
+    make = f"NR_TASKLETS={nr_tsk} BLOCK_SIZE={block_size} BENCHMARK_CYCLES=true make all"
+    run = f"./bin/bfs -n {num_dpus} -a {alg} -p {prt} -o {res} {datafile}"
     process = subprocess.run(make, shell=True)
 
     try:
@@ -43,12 +49,10 @@ def bench_dpu_cycles(datafile, expected_node_levels, alg, prt, nr_tsk, block_siz
             run, shell=True, timeout=120, stdout=subprocess.PIPE, encoding="utf-8")
     except subprocess.TimeoutExpired:
         logging.error(f"BFS timeout ({id_str})")
-        os.remove(res)
         return
 
     if process.returncode > 0:
         logging.error(f"BFS failed to complete ({id_str})")
-        os.remove(res)
         return
 
     if not filecmp.cmp(res, expected_node_levels):
@@ -65,7 +69,7 @@ def bench_dpu_cycles(datafile, expected_node_levels, alg, prt, nr_tsk, block_siz
     return total_cycles
 
 
-def get_best_config(datafile, expected_node_levels, alg, prt):
+def get_best_config(alg, prt):
     """ Computes the optimal number of tasklets and block size
         for the specified (algorithm, partition) pair given the datafile.
     """
@@ -80,8 +84,7 @@ def get_best_config(datafile, expected_node_levels, alg, prt):
         best_block_size_inner = 0
 
         for b in block_sizes:
-            dpu_cycles = bench_dpu_cycles(
-                datafile, expected_node_levels, alg, prt, t, b)
+            dpu_cycles = bench_dpu_cycles(alg, prt, t, b)
             if dpu_cycles < least_cycles_inner:
                 least_cycles_inner = dpu_cycles
                 best_block_size_inner = b
@@ -94,11 +97,10 @@ def get_best_config(datafile, expected_node_levels, alg, prt):
     return best_nr_tasklets, best_block_size
 
 
-for d, e in data_sets:
-    for a, p in algs:
-        nr_tasklets, block_size = get_best_config(d, e, a, p)
-        configs.append((d, a, p, nr_tasklets, block_size))
+for a, p in algs:
+    nr_tasklets, block_size = get_best_config(a, p)
+    configs.append((a, p, nr_tasklets, block_size))
 
-for d, a, p, t, b in configs:
+for a, p, t, b in configs:
     logging.info(
-        f"Optimal config for {a}-{p} given datafile {d} is NR_TASKLETS={t} and BLOCK_SIZE={b}")
+        f"Optimal config for {a}-{p} given datafile {datafile} is NR_TASKLETS={t} and BLOCK_SIZE={b}")

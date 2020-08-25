@@ -26,6 +26,9 @@
 #ifndef BLOCK_SIZE
 #define BLOCK_SIZE 256
 #endif
+#ifndef BENCHMARK_CYCLES
+#define BENCHMARK_CYCLES false
+#endif
 
 enum Algorithm {
   SrcVtx = 0,
@@ -479,6 +482,37 @@ void free_csc(struct CSC csc) {
   free(csc.row_idxs);
 }
 
+// Prints the number of cycles of the worst performing DPU in the set.
+void print_dpu_cycles(struct dpu_set_t *set, struct dpu_set_t *dpu) {
+  uint64_t cycles[num_dpu][NR_TASKLETS];
+  uint32_t i = 0;
+  DPU_FOREACH(*set, *dpu, i) {
+    DPU_ASSERT(dpu_prepare_xfer(*dpu, &cycles[i]));
+  }
+  DPU_ASSERT(dpu_push_xfer(*set, DPU_XFER_FROM_DPU, "cycles", 0, sizeof(uint64_t) * NR_TASKLETS, DPU_XFER_DEFAULT));
+
+  // Get max cycles per DPU (among tasklets).
+  uint64_t max_dpu_cycles[num_dpu];
+  DPU_FOREACH(*set, *dpu, i) {
+    uint32_t max = 0;
+    for (uint32_t t = 0; t < NR_TASKLETS; t++) {
+      uint64_t tasklet_cycles = cycles[i][t];
+      if (tasklet_cycles > max)
+        max = tasklet_cycles;
+    }
+    max_dpu_cycles[i] = max;
+  }
+
+  // Get avg and max DPU cycles per level (i.e. worst-performing DPU).
+  uint64_t max_cycles_lvl = 0;
+  for (int d = 0; d < num_dpu; ++d) {
+    uint64_t max_dpu = max_dpu_cycles[d];
+    if (max_dpu > max_cycles_lvl)
+      max_cycles_lvl = max_dpu;
+  }
+  printf("%lu\n", max_cycles_lvl);
+}
+
 // Fetches and prints node levels from DPUs.
 void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes, uint32_t len_nl, uint32_t div) {
   fprintf(out, "node\tlevel\n");
@@ -531,38 +565,9 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
       // DPU_ASSERT(dpu_log_read(*dpu, stderr));
     }
 
-    ///// BENCHMARK DPU
-    // Get number of cycles from each DPU.
-    uint64_t cycles[num_dpu][NR_TASKLETS];
-    i = 0;
-    DPU_FOREACH(*set, *dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(*dpu, &cycles[i]));
-    }
-    DPU_ASSERT(dpu_push_xfer(*set, DPU_XFER_FROM_DPU, "cycles", 0, sizeof(uint64_t) * NR_TASKLETS, DPU_XFER_DEFAULT));
-
-    // Get max cycles per DPU (among tasklets).
-    uint64_t max_dpu_cycles[num_dpu];
-    DPU_FOREACH(*set, *dpu, i) {
-      uint32_t max = 0;
-      for (uint32_t t = 0; t < NR_TASKLETS; t++) {
-        uint64_t tasklet_cycles = cycles[i][t];
-        if (tasklet_cycles > max)
-          max = tasklet_cycles;
-      }
-      max_dpu_cycles[i] = max;
-    }
-
-    // Get avg and max DPU cycles per level (i.e. worst-performing DPU).
-    uint64_t avg_cycles_lvl = 0, max_cycles_lvl = 0;
-    for (int d = 0; d < num_dpu; ++d) {
-      uint64_t max_dpu = max_dpu_cycles[d];
-      avg_cycles_lvl += max_dpu;
-      if (max_dpu > max_cycles_lvl)
-        max_cycles_lvl = max_dpu;
-    }
-    avg_cycles_lvl /= num_dpu;
-    printf("%lu %lu\n", max_cycles_lvl, avg_cycles_lvl);
-    /////
+#if BENCHMARK_CYCLES
+    print_dpu_cycles(set, dpu);
+#endif
 
     if (done)
       break;
@@ -612,6 +617,10 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
         break;
       }
 
+#if BENCHMARK_CYCLES
+    print_dpu_cycles(set, dpu);
+#endif
+
     if (done)
       break;
     done = true;
@@ -654,6 +663,10 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
         done = false;
         break;
       }
+
+#if BENCHMARK_CYCLES
+    print_dpu_cycles(set, dpu);
+#endif
 
     if (done)
       break;
@@ -967,5 +980,6 @@ int main(int argc, char **argv) {
 
   fclose(out);
   DPU_ASSERT(dpu_free(set));
+  PRINT_INFO("Done");
   return 0;
 }
