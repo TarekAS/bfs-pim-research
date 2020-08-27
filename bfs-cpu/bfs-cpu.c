@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #define SIZE 100000000
 #define PRINT_ERROR(fmt, ...) \
   fprintf(stderr, "\033[0;31mERROR:\033[0m   " fmt "\n", ##__VA_ARGS__)
@@ -13,9 +14,6 @@
   fprintf(stderr, "\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
 #define PRINT_STATUS(status) \
   fprintf(stderr, "Status: %s\n", dpu_api_status_to_string(status))
-#ifndef BENCHMARK_TIME
-#define BENCHMARK_TIME false
-#endif
 
 struct COO {
   uint32_t num_rows;
@@ -34,6 +32,8 @@ struct CSR {
 };
 
 uint32_t *node_levels;
+
+double total_time = 0; // seconds.
 
 // Reads a coo-formated file into memory.
 struct COO read_coo_matrix(char *file) {
@@ -291,6 +291,8 @@ int main(int argc, char **argv) {
 
   node_levels = calloc(csr.num_rows, sizeof(uint32_t));
 
+  clock_t t = clock();
+
   struct Graph *graph = createGraph(csr.num_rows);
 
   for (int node = 0; node < csr.num_rows; ++node) {
@@ -305,13 +307,17 @@ int main(int argc, char **argv) {
 
   bfs(graph, 0);
 
-  printf("node\tlevel\n");
-  for (uint32_t node = 0; node < csr.num_rows; ++node) {
-    uint32_t level = node_levels[node];
-    if (node != 0 && level == 0) // Filters out "padded" rows.
-      continue;
-    printf("%u\t%u\n", node, node_levels[node]);
-  }
+  t = clock() - t;
+  total_time += ((double)t) / CLOCKS_PER_SEC;
+  printf("total_time %f\n", total_time);
+
+  // printf("node\tlevel\n");
+  // for (uint32_t node = 0; node < csr.num_rows; ++node) {
+  //   uint32_t level = node_levels[node];
+  //   if (node != 0 && level == 0) // Filters out "padded" rows.
+  //     continue;
+  //   printf("%u\t%u\n", node, node_levels[node]);
+  // }
 
   free(node_levels);
   free_coo(coo);
