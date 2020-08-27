@@ -3,17 +3,35 @@
 
 Project to benchmark DPU-accelerated Breadth-First Search, compared to classic CPU-only parallel BFS implementations. Part of my MSc Thesis on Near-Memory Acceleration of Graph Algorithms.
 
-**Note:** Requires `UPMEM DPU SDK 2020.x.x` to be installed.
+**Note:** Tested with `UPMEM DPU SDK 2020.3.x`.
+
+
 
 ```
   $ make all
-  $ ./bin/app <datafile>  # bench DPU-accelerated version.
-  $ ./bin/cpu <datafile>  # bench CPU-only version.
-  $ make clean
+  $ BENCHMARK_TIME=true make all
 ```
-Where `datafile` is a COO-formated graph datafile, such as the first line contains the number of nodes and edges, and the subsequent lines contain the row/col index pairs separated by a space and sorted in increasing order by the row index.
+Other environment variables for make:
+- `BENCHMARK_CYCLES=true` to count the number of DPU cycles per BFS iteration.
+- `NR_TASKLETS=<integer>` to set the number of tasklets per DPU (max 24).
+- `BLOCK_SIZE=<multiple_of_8>` to set the MRAM DMA block size (max 512 bytes).
 
-For example:
+```
+  $ ./bin/bfs -n <num_dpu> -a <base_algorithm> -p <partitioning> -o <output_result_path> <datafile>
+```
+Notes:
+- `num_dpu` must be a multiple of 8. Emulator has a limit of 64.
+- `datafile` COO-formated graph (adjacency matrix) that is tab separated, and sorted by the first column then the second column. The first line contains the number of nodes followed by the number of edges. See example below.
+- `base_algorithm` is the base BFS algorithm to use, with options:
+  - `src` for source-vertex-based BFS.
+  - `dst` for destination-vertex-based BFS (i.e. neighbors).
+  - `edge` for edge-based BFS.
+- `partitioning` the way the COO data file is partitioned over the DPUs, with options:
+  - `row` partition the source nodes (i.e. nodes).
+  - `col` partition the destination nodes (i.e. neighbors).
+  - `2d` partition both source nodes and destination nodes.
+
+Example datafile:
 ```
 <NUM_NODES> <NUM_EDGES>
 0 1
@@ -24,24 +42,11 @@ For example:
 ...
 ```
 
-
-You can pass these optional arguments to `./bin/app`
-```
--n <int>        Number of DPUs to use. Must be a multiple of 8. Max 64 if using emulator.
--a <string>     BFS algorithm variation to use: src | dst | edge.
--p <partition>  The manner in which to partition the nodes per DPU: row | col | 2d.
-```
-
-- `src` is for source-vertex BFS (i.e. by nodes). Uses `row` partitioning by default. This is the standard way.
-- `dst` is for destination-vertex BFS (i.e. by neighbors). Uses `col` partitioning by default.
-- `edge` is for edge-based BFS. Uses `2d` partitioning by default.
-
 # Directory Structure
 
 ```
 bfs-cpu/  # classic (cpu-only) BFS implementation.
 bfs-dpu/  # dpu-accelerated BFS implementation.
-  dpu/       # task code (runs on DPU)
-  host/      # main app code (runs on CPU)
+  host/      # main app code (CPU part)
+  dpu/       # DPU code. Contains optimized DMA versions and non-optimized reader-friendly versions.
 ```
-
