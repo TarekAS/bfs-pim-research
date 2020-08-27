@@ -65,7 +65,7 @@ int main() {
   for (uint32_t i = me() * BLOCK_INTS; i < len_nf; i += BLOCK_INTS * NR_TASKLETS) {
     mram_read(&visited[i], vis, BLOCK_SIZE);
     mram_read(&next_frontier[i], f, BLOCK_SIZE);
-    for (uint32_t j = 0; j < BLOCK_INTS; ++j) {
+    for (uint32_t j = 0; j < BLOCK_INTS && i + j < len_nf; ++j) {
       uint32_t nf = f[j];
       if (nf == 0)
         continue;
@@ -82,7 +82,7 @@ int main() {
   for (uint32_t i = me() * BLOCK_INTS; i < len_cf; i += BLOCK_INTS * NR_TASKLETS) {
     mram_read(&curr_frontier[i], f, BLOCK_SIZE);
 
-    for (uint32_t j = 0; j < BLOCK_INTS; j++) {
+    for (uint32_t j = 0; j < BLOCK_INTS && i + j < len_cf; ++j) {
 
       uint32_t cf = f[j];
       if (cf == 0)

@@ -68,7 +68,7 @@ int main() {
     mram_read(&visited[i], vis, BLOCK_SIZE);
     mram_read(&next_frontier[i], f, BLOCK_SIZE);
 
-    for (uint32_t j = 0; j < BLOCK_INTS; ++j) {
+    for (uint32_t j = 0; j < BLOCK_INTS && i + j < len_nf; ++j) {
       uint32_t nf = f[j];
       if (nf == 0)
         continue;
