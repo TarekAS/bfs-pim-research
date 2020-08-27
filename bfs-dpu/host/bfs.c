@@ -656,9 +656,9 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     uint32_t i = 0;
     DPU_FOREACH(*set, *dpu, i) {
       DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i * len_nf]));
-      // DPU_ASSERT(dpu_log_read(*set, stderr));
+      DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
+      // DPU_ASSERT(dpu_log_read(*dpu, stderr));
     }
-    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
     // Check if done.
     for (uint32_t c = 0; c < len_cf; ++c)
