@@ -186,11 +186,12 @@ void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum P
         *alg = DstVtx;
         if (!is_prt_set)
           *prt = Col;
-      } else if (strcmp(optarg, "dst-vtx-2d") == 0) {
-        PRINT_INFO("BFS: Destination-Vertex with 2D partitioning.");
+      } else if (strcmp(optarg, "edge") == 0) {
+        PRINT_INFO("Algorithm: Edge-based BFS.");
         *bin_path = "bin/edge-dma";
-        *alg = DstVtx;
-        *prt = _2D;
+        *alg = Edge;
+        if (!is_prt_set)
+          *prt = _2D;
       } else {
         PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge");
         exit(1);
@@ -542,8 +543,11 @@ void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t to
 
 void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf) {
 
-  uint32_t *frontier = calloc(len_nf, sizeof(uint32_t));
-  uint32_t *nf_tmp = calloc(len_nf, sizeof(uint32_t));
+  uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
+  uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
+
+  uint32_t *frontier = calloc(size_nf, 1);
+  uint32_t *nf_tmp = calloc(size_nf, 1);
   uint32_t level = 0;
   bool done = true;
 
@@ -556,7 +560,7 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     DPU_ASSERT(dpu_prepare_xfer(*set, nf_tmp));
     uint32_t i = 0;
     DPU_FOREACH(*set, *dpu, i) {
-      DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+      DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
       for (uint32_t c = 0; c < len_nf; ++c) {
         frontier[c] |= nf_tmp[c];
         if (done && frontier[c] != 0)
@@ -577,14 +581,14 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     ++level;
     DPU_ASSERT(dpu_copy_to_symbol(*set, level_sym, 0, &level, sizeof(uint32_t)));
     DPU_ASSERT(dpu_prepare_xfer(*set, frontier));
-    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
     DPU_FOREACH(*set, *dpu, i) {
       DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i * len_cf]));
     }
-    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, len_cf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, size_cf, DPU_XFER_DEFAULT));
 
     // Clear frontier.
-    memset(frontier, 0, len_nf * sizeof(uint32_t));
+    memset(frontier, 0, size_nf);
   }
 
   free(nf_tmp);
@@ -593,7 +597,9 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
 
 void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, uint32_t len_nf) {
 
-  uint32_t *frontier = calloc(len_cf, sizeof(uint32_t));
+  uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
+  uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
+  uint32_t *frontier = calloc(size_cf, 1);
   uint32_t level = 0;
   bool done = true;
 
@@ -608,7 +614,7 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
       DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i * len_nf]));
       // DPU_ASSERT(dpu_log_read(*set, stderr));
     }
-    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
     // Check if done.
     for (uint32_t c = 0; c < len_cf; ++c)
@@ -629,7 +635,7 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     ++level;
     DPU_ASSERT(dpu_copy_to_symbol(*set, level_sym, 0, &level, sizeof(uint32_t)));
     DPU_ASSERT(dpu_prepare_xfer(*set, frontier));
-    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, len_cf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, size_cf, DPU_XFER_DEFAULT));
   }
 
   free(frontier);
@@ -637,8 +643,11 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
 
 void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t col_div) {
 
-  uint32_t *frontier = calloc(len_frontier, sizeof(uint32_t));
-  uint32_t *nf_tmp = calloc(len_nf, sizeof(uint32_t));
+  uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
+  uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
+  uint32_t size_f = ROUND_UP_TO_MULTIPLE(len_frontier * sizeof(uint32_t), 8);
+  uint32_t *frontier = calloc(size_f, 1);
+  uint32_t *nf_tmp = calloc(size_nf, 1);
   uint32_t level = 0;
   bool done = true;
 
@@ -651,7 +660,7 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
     DPU_ASSERT(dpu_prepare_xfer(*set, nf_tmp));
     uint32_t i = 0;
     DPU_FOREACH(*set, *dpu, i) {
-      DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+      DPU_ASSERT(dpu_push_xfer_symbol(*dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
       for (uint32_t c = 0; c < len_nf; ++c)
         frontier[c + i * len_nf % len_frontier] |= nf_tmp[c];
       // DPU_ASSERT(dpu_log_read(*dpu, stderr));
@@ -678,14 +687,14 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
     DPU_FOREACH(*set, *dpu, i) {
       DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i * len_nf % len_frontier]));
     }
-    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, nf_addr, len_nf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
     DPU_FOREACH(*set, *dpu, i) {
       DPU_ASSERT(dpu_prepare_xfer(*dpu, &frontier[i / col_div * len_cf]));
     }
-    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, len_cf * sizeof(uint32_t), DPU_XFER_DEFAULT));
+    DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, size_cf, DPU_XFER_DEFAULT));
 
     // Clear frontier.
-    memset(frontier, 0, len_frontier * sizeof(uint32_t));
+    memset(frontier, 0, size_f);
   }
 
   free(nf_tmp);
