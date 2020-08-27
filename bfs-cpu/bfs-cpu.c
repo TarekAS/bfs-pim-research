@@ -62,15 +62,18 @@ struct COO read_coo_matrix(char *file) {
   PRINT_INFO("Reading COO-formated matrix - %u rows, %u columns, %u nonzeros.", coo.num_rows, coo.num_cols, coo.num_nonzeros);
 
   // Read nonzeros.
-  for (uint32_t i = 0; i < coo.num_nonzeros; ++i) {
-    uint32_t rowIdx;
-    uint32_t colIdx;
-    fscanf(fp, "%u", &rowIdx);
-    fscanf(fp, "%u", &colIdx);
-    coo.row_idxs[i] = rowIdx;
-    coo.col_idxs[i] = colIdx;
-  }
+  uint32_t row_idx, col_idx;
+  fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx); // Read first 2 integers of each line.
 
+  uint32_t row_offset = row_idx; // Guarantee 0-indexed COO.
+  coo.row_idxs[0] = row_idx - row_offset;
+  coo.col_idxs[0] = col_idx - row_offset;
+
+  for (uint32_t i = 1; i < coo.num_nonzeros; ++i) {
+    fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx);
+    coo.row_idxs[i] = row_idx - row_offset;
+    coo.col_idxs[i] = col_idx - row_offset;
+  }
   return coo;
 }
 
@@ -277,10 +280,10 @@ void printQueue(struct queue *q) {
   }
 }
 
-int main() {
+int main(int argc, char **argv) {
 
   // Load coo-matrix from file and convert to csr.
-  struct COO coo = read_coo_matrix("data/loc-gowalla_edges.txt");
+  struct COO coo = read_coo_matrix(argv[1]);
   struct CSR csr = coo_to_csr(coo);
 
   node_levels = calloc(csr.num_rows, sizeof(uint32_t));
@@ -299,11 +302,12 @@ int main() {
 
   bfs(graph, 0);
 
+  printf("node\tlevel\n");
   for (uint32_t node = 0; node < csr.num_rows; ++node) {
     uint32_t level = node_levels[node];
     if (node != 0 && level == 0) // Filters out "padded" rows.
       continue;
-    printf("node_levels[%u]=%u\n", node, node_levels[node]);
+    printf("%u\t%u\n", node, node_levels[node]);
   }
 
   free(node_levels);

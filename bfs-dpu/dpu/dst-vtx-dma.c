@@ -18,6 +18,9 @@
 #define BLOCK_SIZE 256
 #endif
 #define BLOCK_INTS BLOCK_SIZE / sizeof(uint32_t)
+#ifndef BENCHMARK_CYCLES
+#define BENCHMARK_CYCLES false
+#endif
 
 __host __mram_ptr void *p_used_mram_end = DPU_MRAM_HEAP_POINTER; // Points to the end of used MRAM addresses.
 
@@ -41,7 +44,15 @@ __dma_aligned uint32_t NL_CACHES[NR_TASKLETS][32];
 
 BARRIER_INIT(nf_barrier, NR_TASKLETS);
 
+#if BENCHMARK_CYCLES
+__host uint64_t cycles[NR_TASKLETS];
+#endif
+
 int main() {
+#if BENCHMARK_CYCLES
+  if (me() == 0)
+    (void)perfcounter_config(COUNT_CYCLES, true);
+#endif
 
   uint32_t *f = F_CACHES[me()];
   uint32_t *vis = VIS_CACHES[me()];
@@ -121,4 +132,7 @@ int main() {
     }
     mram_write(f, &next_frontier[i], BLOCK_SIZE);
   }
+#if BENCHMARK_CYCLES
+  cycles[me()] = perfcounter_get();
+#endif
 }
