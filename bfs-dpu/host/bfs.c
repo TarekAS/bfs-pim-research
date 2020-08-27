@@ -29,6 +29,9 @@
 #ifndef BENCHMARK_CYCLES
 #define BENCHMARK_CYCLES false
 #endif
+#ifndef BENCHMARK_TIME
+#define BENCHMARK_TIME false
+#endif
 
 enum Algorithm {
   SrcVtx = 0,
@@ -74,6 +77,12 @@ struct dpu_symbol_t level_sym;
 
 mram_addr_t cf_addr;
 mram_addr_t nf_addr;
+
+// All timings are in seconds.
+double dpu_compute_time = 0; // Total time spent in DPU computation.
+double host_comm_time = 0;   // Total time spent by Host-DPU communication and data aggregation.
+double pop_mram_time = 0;    // Time spent populating the MRAM (initial copy).
+double fetch_res_time = 0;   // Time spent retrieving the results from MRAM (final copy).
 
 /**
  * @fn dpu_insert_mram_array_u32
@@ -517,6 +526,11 @@ void print_dpu_cycles(struct dpu_set_t *set, struct dpu_set_t *dpu) {
 // Fetches and prints node levels from DPUs.
 void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t total_nodes, uint32_t len_nl, uint32_t div) {
   fprintf(out, "node\tlevel\n");
+
+#if BENCHMARK_TIME
+  clock_t t = clock();
+#endif
+
   uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
   uint32_t *nl_tmp = calloc(len_nl, sizeof(uint32_t));
 
@@ -529,6 +543,11 @@ void print_node_levels(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t to
         node_levels[nreal] = nl_tmp[n];
     }
   }
+
+#if BENCHMARK_TIME
+  t = clock() - t;
+  fetch_res_time += ((double)t) / CLOCKS_PER_SEC;
+#endif
 
   for (uint32_t node = 0; node < total_nodes; ++node) {
     uint32_t level = node_levels[node];
@@ -553,8 +572,18 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
 
   while (true) {
 
+#if BENCHMARK_TIME
+    clock_t t = clock();
+#endif
+
     // Launch DPUs.
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
+
+#if BENCHMARK_TIME
+    t = clock() - t;
+    dpu_compute_time += ((double)t) / CLOCKS_PER_SEC;
+    t = clock();
+#endif
 
     // Union next_frontiers.
     DPU_ASSERT(dpu_prepare_xfer(*set, nf_tmp));
@@ -589,6 +618,11 @@ void bfs_vtx_row(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
 
     // Clear frontier.
     memset(frontier, 0, size_nf);
+
+#if BENCHMARK_TIME
+    t = clock() - t;
+    host_comm_time += ((double)t) / CLOCKS_PER_SEC;
+#endif
   }
 
   free(nf_tmp);
@@ -605,8 +639,18 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
 
   while (true) {
 
+#if BENCHMARK_TIME
+    clock_t t = clock();
+#endif
+
     // Launch DPUs.
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
+
+#if BENCHMARK_TIME
+    t = clock() - t;
+    dpu_compute_time += ((double)t) / CLOCKS_PER_SEC;
+    t = clock();
+#endif
 
     // Concatenate all next_frontiers.
     uint32_t i = 0;
@@ -636,6 +680,11 @@ void bfs_vtx_col(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_cf, 
     DPU_ASSERT(dpu_copy_to_symbol(*set, level_sym, 0, &level, sizeof(uint32_t)));
     DPU_ASSERT(dpu_prepare_xfer(*set, frontier));
     DPU_ASSERT(dpu_push_xfer_symbol(*set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, size_cf, DPU_XFER_DEFAULT));
+
+#if BENCHMARK_TIME
+    t = clock() - t;
+    host_comm_time += ((double)t) / CLOCKS_PER_SEC;
+#endif
   }
 
   free(frontier);
@@ -653,8 +702,18 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
 
   while (true) {
 
+#if BENCHMARK_TIME
+    clock_t t = clock();
+#endif
+
     // Launch DPUs.
     DPU_ASSERT(dpu_launch(*set, DPU_SYNCHRONOUS));
+
+#if BENCHMARK_TIME
+    t = clock() - t;
+    dpu_compute_time += ((double)t) / CLOCKS_PER_SEC;
+    t = clock();
+#endif
 
     // Concatenate by column and union by row the next_frontiers of each DPU.
     DPU_ASSERT(dpu_prepare_xfer(*set, nf_tmp));
@@ -695,6 +754,11 @@ void bfs_vtx_2d(struct dpu_set_t *set, struct dpu_set_t *dpu, uint32_t len_front
 
     // Clear frontier.
     memset(frontier, 0, size_f);
+
+#if BENCHMARK_TIME
+    t = clock() - t;
+    host_comm_time += ((double)t) / CLOCKS_PER_SEC;
+#endif
   }
 
   free(nf_tmp);
@@ -738,6 +802,11 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
+
+#if BENCHMARK_TIME
+  clock_t t = clock();
+#endif
+
   uint32_t i = 0;
   DPU_FOREACH(*set, *dpu, i) {
 
@@ -768,6 +837,11 @@ void start_src_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     DPU_ASSERT(dpu_copy_from(*dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(*dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
   }
+
+#if BENCHMARK_TIME
+  t = clock() - t;
+  pop_mram_time += ((double)t) / CLOCKS_PER_SEC;
+#endif
 
   // Free resources.
   free(frontier);
@@ -824,6 +898,11 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
+
+#if BENCHMARK_TIME
+  clock_t t = clock();
+#endif
+
   uint32_t i = 0;
   DPU_FOREACH(*set, *dpu, i) {
 
@@ -853,6 +932,11 @@ void start_dst_vtx(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo
     DPU_ASSERT(dpu_copy_from(*dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(*dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
   }
+
+#if BENCHMARK_TIME
+  t = clock() - t;
+  pop_mram_time += ((double)t) / CLOCKS_PER_SEC;
+#endif
 
   // Free resources.
   free(frontier);
@@ -902,6 +986,11 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
+
+#if BENCHMARK_TIME
+  clock_t t = clock();
+#endif
+
   uint32_t i = 0;
   DPU_FOREACH(*set, *dpu, i) {
 
@@ -933,6 +1022,11 @@ void start_edge(struct dpu_set_t *set, struct dpu_set_t *dpu, struct COO *coo, i
     DPU_ASSERT(dpu_copy_from(*dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(*dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
   }
+
+#if BENCHMARK_TIME
+  t = clock() - t;
+  pop_mram_time += ((double)t) / CLOCKS_PER_SEC;
+#endif
 
   // Free resources.
   free(frontier);
@@ -990,5 +1084,12 @@ int main(int argc, char **argv) {
   fclose(out);
   DPU_ASSERT(dpu_free(set));
   PRINT_INFO("Done");
+
+#if BENCHMARK_TIME
+  printf("dpu_compute_time %f\thost_comm_time %f\tpop_mram_time=%f\tfetch_res_time=%f\ttotal_alg %f\ttotal_pop_fetch %f\ttotal_all %f\n",
+         dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, dpu_compute_time + host_comm_time,
+         pop_mram_time + fetch_res_time, dpu_compute_time + host_comm_time + pop_mram_time + fetch_res_time);
+#endif
+
   return 0;
 }

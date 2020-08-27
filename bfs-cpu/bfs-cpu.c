@@ -13,6 +13,9 @@
   fprintf(stderr, "\033[0;32mINFO:\033[0m    " fmt "\n", ##__VA_ARGS__)
 #define PRINT_STATUS(status) \
   fprintf(stderr, "Status: %s\n", dpu_api_status_to_string(status))
+#ifndef BENCHMARK_TIME
+#define BENCHMARK_TIME false
+#endif
 
 struct COO {
   uint32_t num_rows;
