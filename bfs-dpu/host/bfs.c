@@ -1086,7 +1086,7 @@ int main(int argc, char **argv) {
   PRINT_INFO("Done");
 
 #if BENCHMARK_TIME
-  printf("dpu_compute_time %f\thost_comm_time %f\tpop_mram_time=%f\tfetch_res_time=%f\ttotal_alg %f\ttotal_pop_fetch %f\ttotal_all %f\n",
+  printf("dpu_compute_time %f\thost_comm_time %f\tpop_mram_time %f\tfetch_res_time %f\ttotal_alg %f\ttotal_pop_fetch %f\ttotal_all %f\n",
          dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, dpu_compute_time + host_comm_time,
          pop_mram_time + fetch_res_time, dpu_compute_time + host_comm_time + pop_mram_time + fetch_res_time);
 #endif
