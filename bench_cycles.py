@@ -15,7 +15,7 @@ import math
 import os
 import sys
 import logging
-logging.basicConfig(filename='benchmark_cycles.log', level=logging.INFO)
+logging.basicConfig(filename='bench_cycles.log', level=logging.INFO)
 
 datafile = sys.argv[1]
 expected_node_levels = sys.argv[2]
