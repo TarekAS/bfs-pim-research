@@ -162,14 +162,15 @@ void dpu_get_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *dst) {
 
 // Finds the two nearest factors of n.
 void nearest_factors(uint32_t n, uint32_t *first, uint32_t *second) {
-  *first = (uint32_t)sqrt(n);
-  while (n % *first != 0)
-    *first--;
-  *second = n / *first;
+  uint32_t f = (uint32_t)sqrt(n);
+  while (n % f != 0)
+    f--;
+  *first = f;
+  *second = n / f;
 }
 
 // Parse CLI args and options.
-void parse_args(int argc, char **argv, int *num_dpu, enum Algorithm *alg, enum Partition *prt, char **bin_path, char **file, char **out_file) {
+void parse_args(int argc, char **argv, uint32_t *num_dpu, enum Algorithm *alg, enum Partition *prt, char **bin_path, char **file, char **out_file) {
   bool is_prt_set = false;
   int c;
   opterr = 0;
@@ -262,8 +263,12 @@ struct COO load_coo(char *file, uint32_t n) {
   uint32_t num_edges = 0;
 
   FILE *fp = fopen(file, "r");
-  fscanf(fp, "%u", &num_nodes);
-  fscanf(fp, "%u", &num_edges);
+  int match = fscanf(fp, "%u %u", &num_nodes, &num_edges);
+  if (match != 2) {
+    PRINT_ERROR("Could not properly read COO file. First line must be of the form: NUM_NODES NUM_EDGES");
+    exit(1);
+  }
+
   coo.num_edges = num_edges;
   coo.row_idxs = malloc(num_edges * sizeof(uint32_t));
   coo.col_idxs = malloc(num_edges * sizeof(uint32_t));
@@ -290,14 +295,22 @@ struct COO load_coo(char *file, uint32_t n) {
   PRINT_INFO("Reading COO-formated graph - %u nodes, %u edges.", num_nodes, num_edges);
 
   uint32_t row_idx, col_idx;
-  fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx); // Read first 2 integers of each line.
+  match = fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx); // Read first 2 integers of file.
+  if (match != 2) {
+    PRINT_ERROR("Could not properly read line %u. Lines must be of the form: ROW_IDX COL_IDX", 1);
+    exit(1);
+  }
 
   uint32_t row_offset = row_idx; // Guarantee 0-indexed COO.
   coo.row_idxs[0] = row_idx - row_offset;
   coo.col_idxs[0] = col_idx - row_offset;
 
   for (uint32_t i = 1; i < num_edges; ++i) {
-    fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx);
+    match = fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx);
+    if (match != 2) {
+      PRINT_ERROR("Could not properly read line %u. Lines must be of the form: ROW_IDX COL_IDX", i + 1);
+      exit(1);
+    }
     coo.row_idxs[i] = row_idx - row_offset;
     coo.col_idxs[i] = col_idx - row_offset;
   }
@@ -307,14 +320,14 @@ struct COO load_coo(char *file, uint32_t n) {
 }
 
 // Partition COO matrix into n COO matrices by col, or by row, or both (2D). Assumes n is even.
-struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
+struct COO *partition_coo(struct COO coo, uint32_t n, enum Partition prt) {
 
   PRINT_INFO("Partitioning COO-matrix into %u parts.", n);
 
   struct COO *prts = malloc(n * sizeof(struct COO));
 
   // Initialize num_edges.
-  for (int i = 0; i < n; ++i)
+  for (uint32_t i = 0; i < n; ++i)
     prts[i].num_edges = 0;
 
   uint32_t num_rows = coo.num_rows;
@@ -377,7 +390,7 @@ struct COO *partition_coo(struct COO coo, int n, enum Partition prt) {
     uint32_t row_idx = coo.row_idxs[i];
     uint32_t col_idx = coo.col_idxs[i];
 
-    uint32_t p;
+    uint32_t p = 0;
 
     if (prt == Row)
       p = row_idx / num_rows;
@@ -515,7 +528,7 @@ void print_dpu_cycles(struct dpu_set_t *set, struct dpu_set_t *dpu) {
 
   // Get avg and max DPU cycles per level (i.e. worst-performing DPU).
   uint64_t max_cycles_lvl = 0;
-  for (int d = 0; d < num_dpu; ++d) {
+  for (uint32_t d = 0; d < num_dpu; ++d) {
     uint64_t max_dpu = max_dpu_cycles[d];
     if (max_dpu > max_cycles_lvl)
       max_cycles_lvl = max_dpu;
