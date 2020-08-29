@@ -52,14 +52,9 @@ def bench_dpu_cycles(alg, prt, nr_tsk, block_size):
 
 datafile = sys.argv[1]
 expected_node_levels = sys.argv[2]
-logging.basicConfig(
-    filename='bench_cycles.log',
-    format='%(asctime)s %(levelname)-8s %(message)s',
-    level=logging.INFO,
-    datefmt='%Y-%m-%d %H:%M:%S')
 
 num_dpus = 64
-nr_tasklets = [x for x in range(1, 25)]
+nr_tasklets = [x for x in range(1, 24)]
 block_sizes = [2**x for x in range(3, 10)]  # [8, 16, 32, ... 512]
 
 # (algorithm, partitioning) pairs
@@ -74,7 +69,7 @@ for t in nr_tasklets:
 
     for b in block_sizes:
         make = f"NR_TASKLETS={t} BLOCK_SIZE={b} BENCHMARK_CYCLES=true make all"
-        process = subprocess.run(make, shell=True)
+        process = subprocess.run(make, shell=True, stdout=subprocess.PIPE)
 
         for a, p in algs:
             dpu_cycles = bench_dpu_cycles(a, p, t, b)
