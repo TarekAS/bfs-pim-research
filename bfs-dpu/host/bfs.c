@@ -24,7 +24,7 @@
 #define NR_TASKLETS 11
 #endif
 #ifndef BLOCK_SIZE
-#define BLOCK_SIZE 256
+#define BLOCK_SIZE 32
 #endif
 #ifndef BENCHMARK_CYCLES
 #define BENCHMARK_CYCLES false

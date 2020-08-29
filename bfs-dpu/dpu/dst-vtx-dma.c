@@ -15,7 +15,7 @@
 #define NR_TASKLETS 11
 #endif
 #ifndef BLOCK_SIZE
-#define BLOCK_SIZE 256
+#define BLOCK_SIZE 32
 #endif
 #define BLOCK_INTS BLOCK_SIZE / sizeof(uint32_t)
 #ifndef BENCHMARK_CYCLES
