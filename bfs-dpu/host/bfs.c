@@ -96,6 +96,11 @@ double fetch_res_time = 0;   // Time spent retrieving the results from MRAM (fin
  * @param length the number of elements in the array.
  */
 void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, uint32_t *src, uint32_t length) {
+
+  bool is_zero = src == 0;
+  if (is_zero)
+    src = calloc(length, sizeof(uint32_t));
+
   // Get end of used MRAM pointer.
   mram_addr_t p_used_mram_end;
   DPU_ASSERT(dpu_copy_from(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
@@ -111,6 +116,9 @@ void dpu_insert_mram_array_u32(struct dpu_set_t dpu, const char *symbol_name, ui
   // Increment end of used MRAM pointer.
   p_used_mram_end += size;
   DPU_ASSERT(dpu_copy_to(dpu, "p_used_mram_end", 0, &p_used_mram_end, sizeof(mram_addr_t)));
+
+  if (is_zero)
+    free(src);
 }
 
 /**
