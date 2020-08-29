@@ -15,22 +15,6 @@ import math
 import os
 import sys
 import logging
-logging.basicConfig(filename='bench_cycles.log', level=logging.INFO)
-
-datafile = sys.argv[1]
-expected_node_levels = sys.argv[2]
-
-num_dpus = 8
-
-nr_tasklets = [x for x in range(1, 25)]
-block_sizes = [2**x for x in range(3, 10)]  # [8, 16, 32, ... 512]
-
-# (algorithm, partitioning) pairs
-algs = [("src", "row"), ("src", "col"), ("src", "2d"),
-        ("dst", "row"), ("dst", "col"), ("dst", "2d"),
-        ("edge", "row"), ("edge", "col"), ("edge", "2d")]
-
-configs = []
 
 
 def bench_dpu_cycles(alg, prt, nr_tsk, block_size):
@@ -40,11 +24,8 @@ def bench_dpu_cycles(alg, prt, nr_tsk, block_size):
     id_str = f"{alg}_{prt}_{nr_tsk}_{block_size}"
     res = f"res_{id_str}"
 
-    make = f"NR_TASKLETS={nr_tsk} BLOCK_SIZE={block_size} BENCHMARK_CYCLES=true make all"
-    run = f"./bin/bfs -n {num_dpus} -a {alg} -p {prt} -o {res} {datafile}"
-    process = subprocess.run(make, shell=True)
-
     try:
+        run = f"./bin/bfs -n {num_dpus} -a {alg} -p {prt} -o {res} {datafile}"
         process = subprocess.run(
             run, shell=True, timeout=120, stdout=subprocess.PIPE, encoding="utf-8")
     except subprocess.TimeoutExpired:
@@ -69,38 +50,32 @@ def bench_dpu_cycles(alg, prt, nr_tsk, block_size):
     return total_cycles
 
 
-def get_best_config(alg, prt):
-    """ Computes the optimal number of tasklets and block size
-        for the specified (algorithm, partition) pair given the datafile.
-    """
+datafile = sys.argv[1]
+expected_node_levels = sys.argv[2]
+logging.basicConfig(
+    filename='bench_cycles.log',
+    format='%(asctime)s %(levelname)-8s %(message)s',
+    level=logging.INFO,
+    datefmt='%Y-%m-%d %H:%M:%S')
 
-    least_cycles = math.inf
-    best_nr_tasklets = 0
-    best_block_size = 0
+num_dpus = 64
+nr_tasklets = [x for x in range(1, 25)]
+block_sizes = [2**x for x in range(3, 10)]  # [8, 16, 32, ... 512]
 
-    for t in nr_tasklets:
+# (algorithm, partitioning) pairs
+algs = [("src", "row"), ("src", "col"), ("src", "2d"),
+        ("dst", "row"), ("dst", "col"), ("dst", "2d"),
+        ("edge", "row"), ("edge", "col"), ("edge", "2d")]
 
-        least_cycles_inner = math.inf
-        best_block_size_inner = 0
-
-        for b in block_sizes:
-            dpu_cycles = bench_dpu_cycles(alg, prt, t, b)
-            if dpu_cycles < least_cycles_inner:
-                least_cycles_inner = dpu_cycles
-                best_block_size_inner = b
-
-        if dpu_cycles < least_cycles:
-            least_cycles = dpu_cycles
-            best_nr_tasklets = t
-            best_block_size = best_block_size_inner
-
-    return best_nr_tasklets, best_block_size
+configs = {}
 
 
-for a, p in algs:
-    nr_tasklets, block_size = get_best_config(a, p)
-    configs.append((a, p, nr_tasklets, block_size))
+for t in nr_tasklets:
 
-for a, p, t, b in configs:
-    logging.info(
-        f"Optimal config for {a}-{p} given datafile {datafile} is NR_TASKLETS={t} and BLOCK_SIZE={b}")
+    for b in block_sizes:
+        make = f"NR_TASKLETS={t} BLOCK_SIZE={b} BENCHMARK_CYCLES=true make all"
+        process = subprocess.run(make, shell=True)
+
+        for a, p in algs:
+            dpu_cycles = bench_dpu_cycles(a, p, t, b)
+            print(f"{a} {p} t={t} b={b} {dpu_cycles}")
