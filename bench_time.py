@@ -3,7 +3,7 @@
     Usage:
         For a single datafile:  $ python3 bench_time.py <datafile> <expected_node_levels>
         For multiple datafiles: $ python3 bench_time.py
-            Put the datafiles in ./data and the expected_node_levels in ./results/true.
+            Put the datafiles in ./data and the expected_node_levels in ./results/cpu.
     
     The expected_node_levels are used to verify the correctness of the BFS output. 
 
@@ -107,14 +107,14 @@ if len(sys.argv) > 1:
     datafiles = [(sys.argv[1], sys.argv[2])]
 else:
     data = os.listdir("data")
-    expected = os.listdir("results/true")
+    expected = os.listdir("results/cpu")
     missing = set(data) - set(expected)
     if len(missing) > 0:
         for f in missing:
             print(f"Missing expected output of file {f}")
         exit()
     for f in data:
-        datafiles.append((f"data/{f}", f"results/true/{f}"))
+        datafiles.append((f"data/{f}", f"results/cpu/{f}"))
 
 min_dpus = 8
 max_dpus = 640
