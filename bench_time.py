@@ -1,7 +1,20 @@
+"""
+    Benchmarks bfs-dpu.
+    Usage:
+        For a single datafile:  $ python3 bench_time.py <datafile> <expected_node_levels>
+        For multiple datafiles: $ python3 bench_time.py
+            Put the datafiles in ./data and the expected_node_levels in ./results/true.
+    
+    The expected_node_levels are used to verify the correctness of the BFS output. 
+
+    Prints timing results to stdout.
+"""
+
 
 import subprocess
 import logging
 import filecmp
+import sys
 import os
 
 
@@ -10,12 +23,9 @@ def make(nr_tasklets, block_size):
     subprocess.run(cmnd, stdout=subprocess.PIPE, shell=True)
 
 
-def get_max_degree(datafile):
-    """
-        Returns the node with the highest number of edges and its number of edges.
-    """
+def get_metadata(datafile):
     with open(datafile) as f:
-        next(f)
+        num_nodes, num_edges = next(f).split()
         max_degree = 0
         max_degree_node = 0
         current_degree = 0
@@ -33,10 +43,15 @@ def get_max_degree(datafile):
                 max_degree = current_degree
                 max_degree_node = node
 
-    return max_degree_node, max_degree
+    return num_nodes, num_edges, max_degree_node, max_degree
 
 
 def bfs(datafile, expected_node_levels, alg, prt, num_dpus):
+    """
+        Runs specified BFS algorithm on a datafile using the specified number
+        of DPUs. The output is compared with the expected_node_levels to verify
+        that the run was correct.
+    """
 
     id_str = f"{alg}_{prt}_{os.path.basename(datafile)}_{num_dpus}"
     res = f"res_{id_str}"
@@ -82,7 +97,38 @@ logging.basicConfig(filename='bench_time.error.log', level=logging.ERROR)
 make(11, 32)
 
 
-success, dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all = bfs(
-    "data/loc-brightkite_edges.txt", "results/true/loc-brightkite_edges.txt", "src", "row", 64)
-if success:
-    print(f"dpu_compute_time={dpu_compute_time}, host_comm_time={host_comm_time}, pop_mram_time={pop_mram_time}, fetch_res_time={fetch_res_time}, total_alg={total_alg}, total_pop_fetch={total_pop_fetch}, total_all={total_all}")
+# (algorithm, partitioning) pairs
+algs = [("src", "row"), ("src", "col"), ("src", "2d"),
+        ("dst", "row"), ("dst", "col"), ("dst", "2d"),
+        ("edge", "row"), ("edge", "col"), ("edge", "2d")]
+
+datafiles = []
+if len(sys.argv) > 1:
+    datafiles = [(sys.argv[1], sys.argv[2])]
+else:
+    data = os.listdir("data")
+    expected = os.listdir("results/true")
+    missing = set(data) - set(expected)
+    if len(missing) > 0:
+        for f in missing:
+            print(f"Missing expected output of file {f}")
+        exit()
+    for f in data:
+        datafiles.append((f"data/{f}", f"results/true/{f}"))
+
+min_dpus = 8
+max_dpus = 640
+
+print("datafile\tsuccess\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all")
+
+
+for datafile, expected in datafiles:
+    for alg, prt in algs:
+        for num_dpus in range(min_dpus, max_dpus+8, 8):
+
+            success, dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all = bfs(
+                datafile, expected, alg, prt, num_dpus)
+            num_nodes, num_edges, max_degree_node, max_degree = get_metadata(
+                datafile)
+
+            print(f"{os.path.basename(datafile)}\t{alg}\t{prt}\t{num_dpus}\t{success}\t{num_nodes}\t{num_edges}\t{max_degree_node}\t{max_degree}\t{dpu_compute_time}\t{host_comm_time}\t{pop_mram_time}\t{fetch_res_time}\t{total_alg}\t{total_pop_fetch}\t{total_all}")
