@@ -127,7 +127,7 @@ while os.path.isfile(outfile):
 
 f = open(outfile, "w+")
 
-f.write("datafile\tsuccess\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all\n")
+f.write("datafile\talgorithm\tpartition\tsuccess\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all\n")
 f.flush()
 
 for datafile, expected in datafiles:
