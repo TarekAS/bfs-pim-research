@@ -7,7 +7,7 @@
     
     The expected_node_levels are used to verify the correctness of the BFS output. 
 
-    Prints timing results to stdout.
+    Prints timing results to bench_time_results.
 """
 
 
@@ -119,8 +119,16 @@ else:
 min_dpus = 8
 max_dpus = 640
 
-print("datafile\tsuccess\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all")
+outfile = "bench_time_results"
+counter = 2
+while os.path.isfile(outfile):
+    outfile = f"bench_time_results_{counter}"
+    counter += 1
 
+f = open(outfile, "w+")
+
+f.write("datafile\tsuccess\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all")
+f.flush()
 
 for datafile, expected in datafiles:
     for alg, prt in algs:
@@ -131,4 +139,6 @@ for datafile, expected in datafiles:
             num_nodes, num_edges, max_degree_node, max_degree = get_metadata(
                 datafile)
 
-            print(f"{os.path.basename(datafile)}\t{alg}\t{prt}\t{num_dpus}\t{success}\t{num_nodes}\t{num_edges}\t{max_degree_node}\t{max_degree}\t{dpu_compute_time}\t{host_comm_time}\t{pop_mram_time}\t{fetch_res_time}\t{total_alg}\t{total_pop_fetch}\t{total_all}")
+            f.write(f"{os.path.basename(datafile)}\t{alg}\t{prt}\t{num_dpus}\t{success}\t{num_nodes}\t{num_edges}\t{max_degree_node}\t{max_degree}\t{dpu_compute_time}\t{host_comm_time}\t{pop_mram_time}\t{fetch_res_time}\t{total_alg}\t{total_pop_fetch}\t{total_all}")
+            f.flush()
+f.close()
