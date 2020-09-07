@@ -63,6 +63,8 @@ int main() {
 
   for (uint32_t edge = me(); edge < num_edges; edge += NR_TASKLETS) {
     uint32_t node = nodes[edge];
+
+    // If node is in current frontier, add neighbor to the next frontier.
     if (curr_frontier[node / 32] & (1 << (node % 32))) {
       uint32_t neighbor = neighbors[edge];
       uint32_t offset = 1 << neighbor % 32;
