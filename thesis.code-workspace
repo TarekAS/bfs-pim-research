@@ -7,9 +7,6 @@
     {
       "name": "bfs-dpu-task",
       "path": "bfs-dpu/dpu"
-    },
-    {
-      "path": "bfs-cpu"
     }
   ],
   "settings": {
