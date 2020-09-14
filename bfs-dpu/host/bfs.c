@@ -34,8 +34,8 @@
 #endif
 
 enum Algorithm {
-  SrcVtx = 0,
-  DstVtx = 1,
+  TopDown = 0,
+  BottomUp = 1,
   Edge = 2,
 };
 
@@ -195,26 +195,26 @@ void parse_args(int argc, char **argv, uint32_t *num_dpu, enum Algorithm *alg, e
       }
       break;
     case 'a':
-      if (strcmp(optarg, "src") == 0) {
-        PRINT_INFO("Algorithm: Source-Vertex-based BFS.");
-        *bin_path = "bin/src-vtx-dma";
-        *alg = SrcVtx;
+      if (strcmp(optarg, "top") == 0) {
+        PRINT_INFO("Algorithm: Vertex-centric Top-Down BFS.");
+        *bin_path = "bin/top-down-dma";
+        *alg = TopDown;
         if (!is_prt_set)
           *prt = Row;
-      } else if (strcmp(optarg, "dst") == 0) {
-        PRINT_INFO("Algorithm: Destination-Vertex-based BFS.");
-        *bin_path = "bin/dst-vtx-dma";
-        *alg = DstVtx;
+      } else if (strcmp(optarg, "bot") == 0) {
+        PRINT_INFO("Algorithm: Vertex-centric Bottom-Up BFS.");
+        *bin_path = "bin/bottom-up-dma";
+        *alg = BottomUp;
         if (!is_prt_set)
           *prt = Col;
       } else if (strcmp(optarg, "edge") == 0) {
-        PRINT_INFO("Algorithm: Edge-based BFS.");
+        PRINT_INFO("Algorithm: Edge-centric BFS.");
         *bin_path = "bin/edge-dma";
         *alg = Edge;
         if (!is_prt_set)
           *prt = _2D;
       } else {
-        PRINT_ERROR("Incorrect -a argument. Supported algorithms: src | dst | edge");
+        PRINT_ERROR("Incorrect -a argument. Supported algorithms: top | bot | edge");
         exit(1);
       }
       break;
@@ -239,7 +239,7 @@ void parse_args(int argc, char **argv, uint32_t *num_dpu, enum Algorithm *alg, e
       break;
     case '?':
     default:
-      PRINT_ERROR("Bad args. Usage: -n <num_dpu> -a <src|dst|edge> -p <row|col|2d> -o <output_file>");
+      PRINT_ERROR("Bad args. Usage: -n <num_dpu> -a <top|bot|edge> -p <row|col|2d> -o <output_file>");
       exit(1);
     }
 
@@ -584,7 +584,7 @@ void print_node_levels(uint32_t total_nodes, uint32_t len_nl, uint32_t div) {
   free(node_levels);
 }
 
-void bfs_vtx_row(uint32_t len_cf, uint32_t len_nf) {
+void start_row(uint32_t len_cf, uint32_t len_nf) {
 
   uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
@@ -653,7 +653,7 @@ void bfs_vtx_row(uint32_t len_cf, uint32_t len_nf) {
   free(frontier);
 }
 
-void bfs_vtx_col(uint32_t len_cf, uint32_t len_nf) {
+void start_col(uint32_t len_cf, uint32_t len_nf) {
 
   uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
@@ -714,7 +714,7 @@ void bfs_vtx_col(uint32_t len_cf, uint32_t len_nf) {
   free(frontier);
 }
 
-void bfs_vtx_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t col_div) {
+void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t col_div) {
 
   uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
@@ -789,7 +789,7 @@ void bfs_vtx_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_
   free(frontier);
 }
 
-void start_src_vtx(struct COO *coo, int num_dpu, enum Partition prt) {
+void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
 
   // Convert COO partitions to CSR.
   struct CSR *csr = malloc(num_dpu * sizeof(struct CSR));
@@ -875,17 +875,17 @@ void start_src_vtx(struct COO *coo, int num_dpu, enum Partition prt) {
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_vtx_row(len_cf, len_nf);
+    start_row(len_cf, len_nf);
   else if (prt == Col)
-    bfs_vtx_col(len_cf, len_nf);
+    start_col(len_cf, len_nf);
   else
-    bfs_vtx_2d(len_frontier, len_cf, len_nf, col_div);
+    start_2d(len_frontier, len_cf, len_nf, col_div);
 
   // Print node levels.
   print_node_levels(total_nodes, len_nl, col_div);
 }
 
-void start_dst_vtx(struct COO *coo, int num_dpu, enum Partition prt) {
+void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
 
   // Convert COO partitions to CSC.
   struct CSC *csc = malloc(num_dpu * sizeof(struct CSC));
@@ -970,17 +970,17 @@ void start_dst_vtx(struct COO *coo, int num_dpu, enum Partition prt) {
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_vtx_row(len_cf, len_nf);
+    start_row(len_cf, len_nf);
   else if (prt == Col)
-    bfs_vtx_col(len_cf, len_nf);
+    start_col(len_cf, len_nf);
   else
-    bfs_vtx_2d(len_frontier, len_cf, len_nf, col_div);
+    start_2d(len_frontier, len_cf, len_nf, col_div);
 
   // Print node levels.
   print_node_levels(total_nodes, len_nl, 1);
 }
 
-void start_edge(struct COO *coo, int num_dpu, enum Partition prt) {
+void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
 
   // Compute BFS metadata.
   uint32_t num_nodes = coo[0].num_rows;
@@ -1060,11 +1060,11 @@ void start_edge(struct COO *coo, int num_dpu, enum Partition prt) {
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
-    bfs_vtx_row(len_cf, len_nf);
+    start_row(len_cf, len_nf);
   else if (prt == Col)
-    bfs_vtx_col(len_cf, len_nf);
+    start_col(len_cf, len_nf);
   else
-    bfs_vtx_2d(len_frontier, len_cf, len_nf, col_div);
+    start_2d(len_frontier, len_cf, len_nf, col_div);
 
   // Print node levels.
   print_node_levels(total_nodes, len_nl, 1);
@@ -1078,7 +1078,7 @@ void cache_symbols(struct dpu_program_t *program) {
 
 int main(int argc, char **argv) {
 
-  enum Algorithm alg = SrcVtx;
+  enum Algorithm alg = TopDown;
   enum Partition prt = Row;
   char *bin_path;
   char *file = NULL;
@@ -1096,12 +1096,12 @@ int main(int argc, char **argv) {
   struct COO *coo_prts = partition_coo(coo, num_dpu, prt);
   free_coo(coo);
 
-  if (alg == SrcVtx)
-    start_src_vtx(coo_prts, num_dpu, prt);
-  else if (alg == DstVtx) {
-    start_dst_vtx(coo_prts, num_dpu, prt);
+  if (alg == TopDown)
+    bfs_top_down(coo_prts, num_dpu, prt);
+  else if (alg == BottomUp) {
+    bfs_bottom_up(coo_prts, num_dpu, prt);
   } else if (alg == Edge) {
-    start_edge(coo_prts, num_dpu, prt);
+    bfs_edge(coo_prts, num_dpu, prt);
   }
 
   fclose(out);
