@@ -1,35 +1,35 @@
 
 # What is this?
 
-Project to benchmark DPU-accelerated Breadth-First Search, compared to classic CPU-only parallel BFS implementations. Part of my MSc Thesis on Near-Memory Acceleration of Graph Algorithms.
+Project to benchmark DPU-accelerated Breadth-First Search, in comparison with classic CPU and GPU based implementations. Part of my MSc Thesis on Processing-In-Memory of Breadth-First Search.
 
 **Note:** Tested with `UPMEM DPU SDK 2020.3.x`.
 
 
 
 ```
-  $ make all
-  $ BENCHMARK_TIME=true make all
+  $ make
 ```
-Other environment variables for make:
-- `BENCHMARK_CYCLES=true` to count the number of DPU cycles per BFS iteration.
-- `NR_TASKLETS=<integer>` to set the number of tasklets per DPU (max 24).
-- `BLOCK_SIZE=<multiple_of_8>` to set the MRAM DMA block size (max 512 bytes).
+Optional environment variables for make:
+- `BENCHMARK_TIME=true` benchmarks the BFS duration in seconds.
+- `BENCHMARK_CYCLES=true` counts the number of DPU cycles per BFS iteration.
+- `NR_TASKLETS=<integer>` sets the number of tasklets per DPU (max 24, recommended 11).
+- `BLOCK_SIZE=<multiple_of_8>` sets the MRAM DMA block size (multiple of 8, max 512 bytes).
 
 ```
   $ ./bin/bfs -n <num_dpu> -a <base_algorithm> -p <partitioning> -o <output_result_path> <datafile>
 ```
 Notes:
 - `num_dpu` must be a multiple of 8. Emulator has a limit of 64.
-- `datafile` COO-formated graph (adjacency matrix) that is tab separated, and sorted by the first column then the second column. The first line contains the number of nodes followed by the number of edges. See example below.
+- `datafile` COO-formated graph (adjacency list) that is tab separated, and sorted by the first column then the second column. The first line contains the number of nodes followed by the number of edges. See example below.
 - `base_algorithm` is the base BFS algorithm to use, with options:
-  - `src` for source-vertex-based BFS.
-  - `dst` for destination-vertex-based BFS (i.e. neighbors).
-  - `edge` for edge-based BFS.
-- `partitioning` the way the COO data file is partitioned over the DPUs, with options:
+  - `top` for vertex-centric top-down BFS.
+  - `bot` for vertex-centric bottom-up BFS.
+  - `edge` for edge-centric BFS.
+- `partitioning` the way the adjacency matrix is partitioned over the DPUs, with options:
   - `row` partition the source nodes (i.e. nodes).
   - `col` partition the destination nodes (i.e. neighbors).
-  - `2d` partition both source nodes and destination nodes.
+  - `2d` partition both source nodes and destination nodes in tiles.
 
 Example datafile:
 ```
@@ -45,8 +45,7 @@ Example datafile:
 # Directory Structure
 
 ```
-bfs-cpu/  # classic (cpu-only) BFS implementation.
-bfs-dpu/  # dpu-accelerated BFS implementation.
-  host/      # main app code (CPU part)
-  dpu/       # DPU code. Contains optimized DMA versions and non-optimized reader-friendly versions.
+bfs-dpu/
+  host/      # Host code (CPU side)
+  dpu/       # Task code (DPU side). Contains optimized DMA versions and non-optimized reader-friendly versions.
 ```

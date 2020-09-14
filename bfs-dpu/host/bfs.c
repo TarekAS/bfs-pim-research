@@ -248,7 +248,7 @@ void parse_args(int argc, char **argv, uint32_t *num_dpu, enum Algorithm *alg, e
     if (numargs > 1)
       PRINT_ERROR("Too many arguments!");
     else
-      PRINT_ERROR("Too few arguments! Please provide data file name (COO-formatted matrix).");
+      PRINT_ERROR("Too few arguments! Please provide data file name (Adjacency list).");
     exit(1);
   }
   *file = argv[optind];
@@ -266,7 +266,7 @@ struct COO load_coo(char *file, uint32_t n) {
     exit(1);
   }
 
-  PRINT_INFO("Loading COO-formated graph from %s.", file);
+  PRINT_INFO("Loading adjacency list formated graph from %s.", file);
   struct COO coo;
 
   // Initialize COO from file.
@@ -276,7 +276,7 @@ struct COO load_coo(char *file, uint32_t n) {
   FILE *fp = fopen(file, "r");
   int match = fscanf(fp, "%u %u", &num_nodes, &num_edges);
   if (match != 2) {
-    PRINT_ERROR("Could not properly read COO file. First line must be of the form: NUM_NODES NUM_EDGES");
+    PRINT_ERROR("Could not properly read Adjacency list file. First line must be of the form: NUM_NODES NUM_EDGES");
     exit(1);
   }
 
@@ -303,7 +303,7 @@ struct COO load_coo(char *file, uint32_t n) {
   coo.num_cols = num_nodes;
 
   // Read nonzeros.
-  PRINT_INFO("Reading COO-formated graph - %u nodes, %u edges.", num_nodes, num_edges);
+  PRINT_INFO("%u nodes, %u edges.", num_nodes, num_edges);
 
   uint32_t row_idx, col_idx;
   match = fscanf(fp, "%u %u%*[^\n]\n", &row_idx, &col_idx); // Read first 2 integers of file.
@@ -333,7 +333,7 @@ struct COO load_coo(char *file, uint32_t n) {
 // Partition COO matrix into n COO matrices by col, or by row, or both (2D). Assumes n is even.
 struct COO *partition_coo(struct COO coo, uint32_t n, enum Partition prt) {
 
-  PRINT_INFO("Partitioning COO-matrix into %u parts.", n);
+  PRINT_INFO("Partitioning adjacency matrix into %u parts.", n);
 
   struct COO *prts = malloc(n * sizeof(struct COO));
 
