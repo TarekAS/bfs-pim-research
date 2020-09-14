@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
+#include <sys/time.h>
 #include <unistd.h>
 
 #define _POSIX_C_SOURCE 2 // To use GNU's getopt.
@@ -31,6 +31,37 @@
 #endif
 #ifndef BENCHMARK_TIME
 #define BENCHMARK_TIME false
+#endif
+
+#if BENCHMARK_TIME
+typedef struct {
+  struct timeval start_time;
+  struct timeval end_time;
+} Timer;
+
+static void start_time(Timer *timer) {
+  gettimeofday(&(timer->start_time), NULL);
+}
+
+static void stop_time(Timer *timer) {
+  gettimeofday(&(timer->end_time), NULL);
+}
+
+static double get_elapsed_time(Timer timer) {
+  return ((double)((timer.end_time.tv_sec - timer.start_time.tv_sec) + (timer.end_time.tv_usec - timer.start_time.tv_usec) / 1.0e6));
+}
+
+// All timings are in seconds.
+double dpu_compute_time = 0; // Total time spent in DPU computation.
+double host_comm_time = 0;   // Total time spent by Host-DPU communication and data aggregation.
+double pop_mram_time = 0;    // Time spent populating the MRAM (initial copy).
+double fetch_res_time = 0;   // Time spent retrieving the results from MRAM (final copy).
+
+Timer dpu_compute_timer;
+Timer host_comm_timer;
+Timer pop_mram_timer;
+Timer fetch_res_timer;
+
 #endif
 
 enum Algorithm {
@@ -80,12 +111,6 @@ mram_addr_t nf_addr;
 
 struct dpu_set_t set;
 struct dpu_set_t dpu;
-
-// All timings are in seconds.
-double dpu_compute_time = 0; // Total time spent in DPU computation.
-double host_comm_time = 0;   // Total time spent by Host-DPU communication and data aggregation.
-double pop_mram_time = 0;    // Time spent populating the MRAM (initial copy).
-double fetch_res_time = 0;   // Time spent retrieving the results from MRAM (final copy).
 
 /**
  * @fn dpu_insert_mram_array_u32
@@ -552,7 +577,7 @@ void print_node_levels(uint32_t total_nodes, uint32_t len_nl, uint32_t div) {
   fprintf(out, "node\tlevel\n");
 
 #if BENCHMARK_TIME
-  clock_t t = clock();
+  start_time(&fetch_res_timer);
 #endif
 
   uint32_t *node_levels = calloc(total_nodes, sizeof(uint32_t));
@@ -569,8 +594,8 @@ void print_node_levels(uint32_t total_nodes, uint32_t len_nl, uint32_t div) {
   }
 
 #if BENCHMARK_TIME
-  t = clock() - t;
-  fetch_res_time += ((double)t) / CLOCKS_PER_SEC;
+  stop_time(&fetch_res_timer);
+  fetch_res_time = get_elapsed_time(fetch_res_timer);
 #endif
 
   for (uint32_t node = 0; node < total_nodes; ++node) {
@@ -597,16 +622,16 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
   while (true) {
 
 #if BENCHMARK_TIME
-    clock_t t = clock();
+    start_time(&dpu_compute_timer);
 #endif
 
     // Launch DPUs.
     DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
 #if BENCHMARK_TIME
-    t = clock() - t;
-    dpu_compute_time += ((double)t) / CLOCKS_PER_SEC;
-    t = clock();
+    stop_time(&dpu_compute_timer);
+    dpu_compute_time += get_elapsed_time(dpu_compute_timer);
+    start_time(&host_comm_timer);
 #endif
 
     // Union next_frontiers.
@@ -644,8 +669,8 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
     memset(frontier, 0, size_nf);
 
 #if BENCHMARK_TIME
-    t = clock() - t;
-    host_comm_time += ((double)t) / CLOCKS_PER_SEC;
+    stop_time(&host_comm_timer);
+    host_comm_time += get_elapsed_time(host_comm_timer);
 #endif
   }
 
@@ -664,16 +689,16 @@ void start_col(uint32_t len_cf, uint32_t len_nf) {
   while (true) {
 
 #if BENCHMARK_TIME
-    clock_t t = clock();
+    start_time(&dpu_compute_timer);
 #endif
 
     // Launch DPUs.
     DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
 #if BENCHMARK_TIME
-    t = clock() - t;
-    dpu_compute_time += ((double)t) / CLOCKS_PER_SEC;
-    t = clock();
+    stop_time(&dpu_compute_timer);
+    dpu_compute_time += get_elapsed_time(dpu_compute_timer);
+    start_time(&host_comm_timer);
 #endif
 
     // Concatenate all next_frontiers.
@@ -706,8 +731,8 @@ void start_col(uint32_t len_cf, uint32_t len_nf) {
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, size_cf, DPU_XFER_DEFAULT));
 
 #if BENCHMARK_TIME
-    t = clock() - t;
-    host_comm_time += ((double)t) / CLOCKS_PER_SEC;
+    stop_time(&host_comm_timer);
+    host_comm_time += get_elapsed_time(host_comm_timer);
 #endif
   }
 
@@ -727,16 +752,16 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
   while (true) {
 
 #if BENCHMARK_TIME
-    clock_t t = clock();
+    start_time(&dpu_compute_timer);
 #endif
 
     // Launch DPUs.
     DPU_ASSERT(dpu_launch(set, DPU_SYNCHRONOUS));
 
 #if BENCHMARK_TIME
-    t = clock() - t;
-    dpu_compute_time += ((double)t) / CLOCKS_PER_SEC;
-    t = clock();
+    stop_time(&dpu_compute_timer);
+    dpu_compute_time += get_elapsed_time(dpu_compute_timer);
+    start_time(&host_comm_timer);
 #endif
 
     // Concatenate by column and union by row the next_frontiers of each DPU.
@@ -780,8 +805,8 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
     memset(frontier, 0, size_f);
 
 #if BENCHMARK_TIME
-    t = clock() - t;
-    host_comm_time += ((double)t) / CLOCKS_PER_SEC;
+    stop_time(&host_comm_timer);
+    host_comm_time += get_elapsed_time(host_comm_timer);
 #endif
   }
 
@@ -828,7 +853,7 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
   PRINT_INFO("Populating MRAM.");
 
 #if BENCHMARK_TIME
-  clock_t t = clock();
+  start_time(&pop_mram_timer);
 #endif
 
   uint32_t i = 0;
@@ -863,8 +888,8 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
   }
 
 #if BENCHMARK_TIME
-  t = clock() - t;
-  pop_mram_time += ((double)t) / CLOCKS_PER_SEC;
+  stop_time(&pop_mram_timer);
+  pop_mram_time = get_elapsed_time(pop_mram_timer);
 #endif
 
   // Free resources.
@@ -924,7 +949,7 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
   PRINT_INFO("Populating MRAM.");
 
 #if BENCHMARK_TIME
-  clock_t t = clock();
+  start_time(&pop_mram_timer);
 #endif
 
   uint32_t i = 0;
@@ -958,8 +983,8 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
   }
 
 #if BENCHMARK_TIME
-  t = clock() - t;
-  pop_mram_time += ((double)t) / CLOCKS_PER_SEC;
+  stop_time(&pop_mram_timer);
+  pop_mram_time = get_elapsed_time(pop_mram_timer);
 #endif
 
   // Free resources.
@@ -1012,7 +1037,7 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
   PRINT_INFO("Populating MRAM.");
 
 #if BENCHMARK_TIME
-  clock_t t = clock();
+  start_time(&pop_mram_timer);
 #endif
 
   uint32_t i = 0;
@@ -1048,8 +1073,8 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
   }
 
 #if BENCHMARK_TIME
-  t = clock() - t;
-  pop_mram_time += ((double)t) / CLOCKS_PER_SEC;
+  stop_time(&pop_mram_timer);
+  pop_mram_time = get_elapsed_time(pop_mram_timer);
 #endif
 
   // Free resources.
@@ -1109,9 +1134,12 @@ int main(int argc, char **argv) {
   PRINT_INFO("Done");
 
 #if BENCHMARK_TIME
+  double total_alg = dpu_compute_time + host_comm_time;
+  double total_pop_fetch = pop_mram_time + fetch_res_time;
+  double total_all = dpu_compute_time + host_comm_time + pop_mram_time + fetch_res_time;
+
   printf("dpu_compute_time %f\thost_comm_time %f\tpop_mram_time %f\tfetch_res_time %f\ttotal_alg %f\ttotal_pop_fetch %f\ttotal_all %f\n",
-         dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, dpu_compute_time + host_comm_time,
-         pop_mram_time + fetch_res_time, dpu_compute_time + host_comm_time + pop_mram_time + fetch_res_time);
+         dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all);
 #endif
 
   return 0;
