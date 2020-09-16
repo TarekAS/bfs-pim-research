@@ -127,7 +127,7 @@ while os.path.isfile(outfile):
 f = open(outfile, "w+")
 
 # Write header.
-f.write("datafile\talgorithm\tpartition\tsuccess\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all\n")
+f.write("datafile\talgorithm\tpartition\tsuccess\tnum_dpus\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all\n")
 f.flush()
 
 # Run benchmarks on each datafile, for each combination of bfs variation and dpu count.
@@ -141,6 +141,6 @@ for datafile, expected in datafiles:
             num_nodes, num_edges, max_degree_node, max_degree = get_metadata(
                 datafile)
 
-            f.write(f"{os.path.basename(datafile)}\t{alg}\t{prt}\t{success}\t{num_dpus}\t{success}\t{num_nodes}\t{num_edges}\t{max_degree_node}\t{max_degree}\t{dpu_compute_time}\t{host_comm_time}\t{pop_mram_time}\t{fetch_res_time}\t{total_alg}\t{total_pop_fetch}\t{total_all}\n")
+            f.write(f"{os.path.basename(datafile)}\t{alg}\t{prt}\t{success}\t{num_dpus}\t{num_nodes}\t{num_edges}\t{max_degree_node}\t{max_degree}\t{dpu_compute_time}\t{host_comm_time}\t{pop_mram_time}\t{fetch_res_time}\t{total_alg}\t{total_pop_fetch}\t{total_all}\n")
             f.flush()
 f.close()
