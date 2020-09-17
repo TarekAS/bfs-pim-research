@@ -615,7 +615,7 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
 
   uint32_t *frontier = calloc(size_nf, 1);
-  uint32_t *nf_tmp = calloc(size_nf, 1);
+  uint32_t *nf_tmp = calloc(size_nf * num_dpu, 1);
   uint32_t level = 0;
   bool done = true;
 
@@ -634,17 +634,20 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
     start_time(&host_comm_timer);
 #endif
 
-    // Union next_frontiers.
-    DPU_ASSERT(dpu_prepare_xfer(set, nf_tmp));
+    // Fetch next_frontiers.
     uint32_t i = 0;
     DPU_FOREACH(set, dpu, i) {
-      DPU_ASSERT(dpu_push_xfer_symbol(dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
-      for (uint32_t c = 0; c < len_nf; ++c) {
-        frontier[c] |= nf_tmp[c];
-        if (done && frontier[c] != 0)
-          done = false;
-      }
+      DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_tmp[i * len_nf]));
       // DPU_ASSERT(dpu_log_read(dpu, stderr));
+    }
+    DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
+
+    // Union next_frontiers and check if done.
+    for (uint32_t c = 0; c < len_nf * num_dpu; ++c) {
+      uint32_t nf = nf_tmp[c];
+      frontier[c % len_nf] |= nf;
+      if (done && nf != 0)
+        done = false;
     }
 
 #if BENCHMARK_CYCLES
@@ -745,7 +748,7 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
   uint32_t size_f = ROUND_UP_TO_MULTIPLE(len_frontier * sizeof(uint32_t), 8);
   uint32_t *frontier = calloc(size_f, 1);
-  uint32_t *nf_tmp = calloc(size_nf, 1);
+  uint32_t *nf_tmp = calloc(size_nf * num_dpu, 1);
   uint32_t level = 0;
   bool done = true;
 
@@ -764,22 +767,21 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
     start_time(&host_comm_timer);
 #endif
 
-    // Concatenate by column and union by row the next_frontiers of each DPU.
-    DPU_ASSERT(dpu_prepare_xfer(set, nf_tmp));
+    // Fetch next_frontiers.
     uint32_t i = 0;
     DPU_FOREACH(set, dpu, i) {
-      DPU_ASSERT(dpu_push_xfer_symbol(dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
-      for (uint32_t c = 0; c < len_nf; ++c)
-        frontier[c + i * len_nf % len_frontier] |= nf_tmp[c];
+      DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_tmp[i * len_nf]));
       // DPU_ASSERT(dpu_log_read(dpu, stderr));
     }
+    DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
-    // Check if done.
-    for (uint32_t c = 0; c < len_frontier; ++c)
-      if (frontier[c] != 0) {
+    // Concatenate by column and union by row the next_frontiers of each DPU, and check if done.
+    for (uint32_t c = 0; c < len_nf * num_dpu; ++c) {
+      uint32_t nf = nf_tmp[c];
+      frontier[c % len_frontier] |= nf;
+      if (done && nf != 0)
         done = false;
-        break;
-      }
+    }
 
 #if BENCHMARK_CYCLES
     print_dpu_cycles(set, dpu);
