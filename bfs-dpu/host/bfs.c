@@ -871,9 +871,9 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
     uint32_t *nf = i % col_div == 0 ? frontier : 0;
 
     // Make sure arrays can be safely partitioned by NR_TASKLETS and BLOCK_SIZE.
-    uint32_t lcf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_cf, NR_TASKLETS), BLOCK_SIZE);
-    uint32_t lnf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nf, NR_TASKLETS), BLOCK_SIZE);
-    uint32_t lnl = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nl, NR_TASKLETS), BLOCK_SIZE);
+    uint32_t lcf = ROUND_UP_TO_MULTIPLE(len_cf, BLOCK_SIZE);
+    uint32_t lnf = ROUND_UP_TO_MULTIPLE(len_nf, BLOCK_SIZE);
+    uint32_t lnl = ROUND_UP_TO_MULTIPLE(len_nl, BLOCK_SIZE);
 
     dpu_insert_mram_array_u32(dpu, "visited", 0, lnf);
     dpu_insert_mram_array_u32(dpu, "next_frontier", nf, lnf);
@@ -962,9 +962,9 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
     dpu_set_u32(dpu, "len_nf", len_nf);
 
     // Make sure arrays can be safely partitioned by NR_TASKLETS and BLOCK_SIZE.
-    uint32_t lcf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_cf, NR_TASKLETS), BLOCK_SIZE);
-    uint32_t lnf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nf, NR_TASKLETS), BLOCK_SIZE);
-    uint32_t lnl = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nl, NR_TASKLETS), BLOCK_SIZE);
+    uint32_t lcf = ROUND_UP_TO_MULTIPLE(len_cf, BLOCK_SIZE);
+    uint32_t lnf = ROUND_UP_TO_MULTIPLE(len_nf, BLOCK_SIZE);
+    uint32_t lnl = ROUND_UP_TO_MULTIPLE(len_nl, BLOCK_SIZE);
 
     // Add root node to cf of all DPUs of first row and to nf of all DPUs of first col.
     uint32_t *cf = i < col_div ? frontier : 0;
@@ -1054,9 +1054,9 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
     uint32_t *nf = i % col_div == 0 ? frontier : 0;
 
     // Make sure arrays can be safely partitioned by NR_TASKLETS and BLOCK_SIZE.
-    uint32_t lcf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_cf, NR_TASKLETS), BLOCK_SIZE);
-    uint32_t lnf = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nf, NR_TASKLETS), BLOCK_SIZE);
-    uint32_t lnl = ROUND_UP_TO_MULTIPLE(ROUND_UP_TO_MULTIPLE(len_nl, NR_TASKLETS), BLOCK_SIZE);
+    uint32_t lcf = ROUND_UP_TO_MULTIPLE(len_cf, BLOCK_SIZE);
+    uint32_t lnf = ROUND_UP_TO_MULTIPLE(len_nf, BLOCK_SIZE);
+    uint32_t lnl = ROUND_UP_TO_MULTIPLE(len_nl, BLOCK_SIZE);
 
     dpu_insert_mram_array_u32(dpu, "visited", 0, lnf);
     dpu_insert_mram_array_u32(dpu, "next_frontier", nf, lnf);
