@@ -863,11 +863,10 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
     dpu_set_u32(dpu, "len_nf", len_nf);
     dpu_set_u32(dpu, "len_cf", len_cf);
 
-    uint32_t cf_from = i * len_cf;
-    uint32_t cf_to = (i + 1) * len_cf;
-
-    dpu_set_u32(dpu, "cf_from", cf_from);
-    dpu_set_u32(dpu, "cf_to", cf_to);
+    if (prt == Row) {
+      dpu_set_u32(dpu, "cf_from", i * len_cf);
+      dpu_set_u32(dpu, "cf_to", (i + 1) * len_cf);
+    }
 
     // Add root node to cf of all DPUs of first row and to nf of all DPUs of first col.
     uint32_t *cf = i < col_div ? frontier : 0;
