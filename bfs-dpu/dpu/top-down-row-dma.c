@@ -72,14 +72,13 @@ int main() {
       mram_read(&next_frontier[cf_from + i], f, BLOCK_SIZE);
       mram_write(f, &curr_frontier[i], BLOCK_SIZE);
     }
-  else {
+  else
     for (uint32_t i = me() * BLOCK_INTS; i < len_cf; i += BLOCK_INTS * NR_TASKLETS) {
       mram_read(&next_frontier[cf_from - 1 + i], f, BLOCK_SIZE + 8);
       for (uint32_t j = 0; j < BLOCK_INTS; ++j)
         f[j] = f[j + 1];
       mram_write(f, &curr_frontier[i], BLOCK_SIZE);
     }
-  }
 
   barrier_wait(&nf_barrier);
 
