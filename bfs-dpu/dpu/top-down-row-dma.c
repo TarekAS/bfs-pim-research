@@ -72,8 +72,8 @@ int main() {
       mram_read(&next_frontier[cf_from + i], f, BLOCK_SIZE);
       mram_write(f, &curr_frontier[i], BLOCK_SIZE);
     }
-  else if (me() == 0) {
-    for (uint32_t i = 0; i < len_cf; i += BLOCK_INTS) {
+  else {
+    for (uint32_t i = me() * BLOCK_INTS; i < len_cf; i += BLOCK_INTS * NR_TASKLETS) {
       mram_read(&next_frontier[cf_from - 1 + i], f, BLOCK_SIZE + 8);
       for (uint32_t j = 0; j < BLOCK_INTS; ++j)
         f[j] = f[j + 1];
