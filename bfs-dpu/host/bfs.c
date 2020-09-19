@@ -280,6 +280,9 @@ void parse_args(int argc, char **argv, uint32_t *num_dpu, enum Algorithm *alg, e
 
   if (*out_file == NULL)
     *out_file = "/dev/null";
+
+  if (*alg == TopDown && *prt == Row)
+    *bin_path = "bin/top-down-row-dma";
 }
 
 // Load coo-formated file into memory.
@@ -612,8 +615,6 @@ void print_node_levels(uint32_t total_nodes, uint32_t len_nl, uint32_t div) {
 void start_row(uint32_t len_cf, uint32_t len_nf) {
 
   uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
-  uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
-
   uint32_t *frontier = calloc(size_nf, 1);
   uint32_t *nf_tmp = calloc(size_nf * num_dpu, 1);
   uint32_t level = 0;
@@ -663,10 +664,6 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
     DPU_ASSERT(dpu_copy_to_symbol(set, level_sym, 0, &level, sizeof(uint32_t)));
     DPU_ASSERT(dpu_prepare_xfer(set, frontier));
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_TO_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
-    DPU_FOREACH(set, dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(dpu, &frontier[i * len_cf]));
-    }
-    DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, size_cf, DPU_XFER_DEFAULT));
 
     // Clear frontier.
     memset(frontier, 0, size_nf);
@@ -865,6 +862,12 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
     dpu_set_u32(dpu, "level", 0);
     dpu_set_u32(dpu, "len_nf", len_nf);
     dpu_set_u32(dpu, "len_cf", len_cf);
+
+    uint32_t cf_from = i * len_cf;
+    uint32_t cf_to = (i + 1) * len_cf;
+
+    dpu_set_u32(dpu, "cf_from", cf_from);
+    dpu_set_u32(dpu, "cf_to", cf_to);
 
     // Add root node to cf of all DPUs of first row and to nf of all DPUs of first col.
     uint32_t *cf = i < col_div ? frontier : 0;
