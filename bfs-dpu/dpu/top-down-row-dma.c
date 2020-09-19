@@ -43,7 +43,7 @@ __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontie
 __host __mram_ptr uint32_t *node_levels;   // OUTPUT of the BFS.
 
 // WRAM caches.
-__dma_aligned uint32_t F_CACHES[NR_TASKLETS][BLOCK_INTS];
+__dma_aligned uint32_t F_CACHES[NR_TASKLETS][BLOCK_INTS + 2];
 __dma_aligned uint32_t VIS_CACHES[NR_TASKLETS][BLOCK_INTS];
 __dma_aligned uint32_t EDGE_CACHES[NR_TASKLETS][BLOCK_INTS];
 __dma_aligned uint32_t NL_CACHES[NR_TASKLETS][32];
@@ -73,14 +73,14 @@ int main() {
       mram_write(f, &curr_frontier[i], BLOCK_SIZE);
     }
   else if (me() == 0) {
-    for (uint32_t i = 0; i < len_cf; i += 6) {
-      mram_read(&next_frontier[cf_from - 1 + i], f, BLOCK_SIZE);
-      for (uint32_t j = 0; j < BLOCK_INTS - 2; ++j)
+    for (uint32_t i = 0; i < len_cf; i += BLOCK_INTS) {
+      mram_read(&next_frontier[cf_from - 1 + i], f, BLOCK_SIZE + 8);
+      for (uint32_t j = 0; j < BLOCK_INTS; ++j)
         f[j] = f[j + 1];
-
-      mram_write(f, &curr_frontier[i], BLOCK_SIZE - 2 * sizeof(uint32_t));
+      mram_write(f, &curr_frontier[i], BLOCK_SIZE);
     }
   }
+
   barrier_wait(&nf_barrier);
 
   // Loop over next_frontier.
