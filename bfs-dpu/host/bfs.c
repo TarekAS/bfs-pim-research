@@ -283,6 +283,8 @@ void parse_args(int argc, char **argv, uint32_t *num_dpu, enum Algorithm *alg, e
 
   if (*alg == TopDown && *prt == Row)
     *bin_path = "bin/top-down-row-dma";
+  if (*alg == BottomUp && *prt == Row)
+    *bin_path = "bin/bottom-up-row-dma";
 }
 
 // Load coo-formated file into memory.
@@ -621,6 +623,8 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
   bool done = true;
 
   while (true) {
+
+    PRINT_DEBUG("Level %u", level);
 
 #if BENCHMARK_TIME
     start_time(&dpu_compute_timer);
@@ -962,6 +966,12 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
     // Copy BFS data.
     dpu_set_u32(dpu, "level", 0);
     dpu_set_u32(dpu, "len_nf", len_nf);
+
+    if (prt == Row) {
+      dpu_set_u32(dpu, "len_cf", len_cf);
+      dpu_set_u32(dpu, "cf_from", i * len_cf);
+      dpu_set_u32(dpu, "cf_to", (i + 1) * len_cf);
+    }
 
     // Make sure arrays can be safely partitioned by NR_TASKLETS and BLOCK_SIZE.
     uint32_t lcf = ROUND_UP_TO_MULTIPLE(len_cf, BLOCK_SIZE);
