@@ -651,12 +651,9 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
 #endif
 
     // Union next_frontiers.
-    uint32_t idx = 0;
-    for (uint32_t d = 0; d < num_dpu; ++d) {
+    for (uint32_t d = 0; d < num_dpu; ++d)
       for (uint32_t c = 0; c < len_nf; ++c)
-        frontier[c] |= nf_tmp[idx + c];
-      idx += len_nf;
-    }
+        frontier[c] |= nf_tmp[d * len_nf + c];
 
     // Check if done.
     for (uint32_t c = 0; c < len_nf; ++c)
@@ -813,12 +810,15 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
 #endif
 
     // Concatenate by column and union by row the next_frontiers of each DPU, and check if done.
-    for (uint32_t c = 0; c < len_nf * num_dpu; ++c) {
-      uint32_t nf = nf_tmp[c];
-      frontier[c % len_frontier] |= nf;
-      if (done && nf != 0)
+    for (uint32_t c = 0; c < len_nf * num_dpu; ++c)
+      frontier[c % len_frontier] |= nf_tmp[c];
+
+    // Check if done.
+    for (uint32_t c = 0; c < len_frontier; ++c)
+      if (frontier[c] != 0) {
         done = false;
-    }
+        break;
+      }
 
 #if BENCHMARK_TIME
     stop_time(&host_aggr_timer);
