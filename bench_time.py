@@ -4,8 +4,8 @@
         For a single datafile:  $ python3 bench_time.py <datafile> <expected_node_levels>
         For multiple datafiles: $ python3 bench_time.py
             Put the datafiles in ./data and the expected_node_levels in ./results/expected.
-    
-    The expected_node_levels are used to verify the correctness of the BFS output. 
+
+    The expected_node_levels are used to verify the correctness of the BFS output.
 
     Prints timing results to bench_results.
 """
@@ -82,14 +82,14 @@ def bfs(datafile, expected_node_levels, alg, prt, num_dpus):
 
     times = process.stdout.split(" ")
 
-    dpu_compute_time = float(times[1].split(" ")[1])
-    host_comm_time = float(times[3].split(" ")[1])
-    host_aggr_time = float(times[5].split(" ")[1])
-    pop_mram_time = float(times[7].split(" ")[1])
-    fetch_res_time = float(times[9].split(" ")[1])
-    total_alg = float(times[11].split(" ")[1])
-    total_pop_fetch = float(times[13].split(" ")[1])
-    total_all = float(times[15].split(" ")[1])
+    dpu_compute_time = float(times[1])
+    host_comm_time = float(times[3])
+    host_aggr_time = float(times[5])
+    pop_mram_time = float(times[7])
+    fetch_res_time = float(times[9])
+    total_alg = float(times[11])
+    total_pop_fetch = float(times[13])
+    total_all = float(times[15])
 
     return True, dpu_compute_time, host_comm_time, host_aggr_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all
 
