@@ -650,13 +650,20 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
     start_time(&host_aggr_timer);
 #endif
 
-    // Union next_frontiers and check if done.
-    for (uint32_t c = 0; c < len_nf * num_dpu; ++c) {
-      uint32_t nf = nf_tmp[c];
-      frontier[c % len_nf] |= nf;
-      if (done && nf != 0)
-        done = false;
+    // Union next_frontiers.
+    uint32_t idx = 0;
+    for (uint32_t d = 0; d < num_dpu; ++d) {
+      for (uint32_t c = 0; c < len_nf; ++c)
+        frontier[c] |= nf_tmp[idx + c];
+      idx += len_nf;
     }
+
+    // Check if done.
+    for (uint32_t c = 0; c < len_nf; ++c)
+      if (frontier[c] != 0) {
+        done = false;
+        break;
+      }
 
 #if BENCHMARK_TIME
     stop_time(&host_aggr_timer);
