@@ -283,8 +283,10 @@ void parse_args(int argc, char **argv, uint32_t *num_dpu, enum Algorithm *alg, e
 
   if (*alg == TopDown && *prt == Row)
     *bin_path = "bin/top-down-row-dma";
-  if (*alg == BottomUp && *prt == Row)
+  else if (*alg == BottomUp && *prt == Row)
     *bin_path = "bin/bottom-up-row-dma";
+  else if (*alg == Edge && *prt == Row)
+    *bin_path = "bin/edge-row-dma";
 }
 
 // Load coo-formated file into memory.
@@ -1060,6 +1062,12 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
     // Copy BFS data.
     dpu_set_u32(dpu, "level", 0);
     dpu_set_u32(dpu, "len_nf", len_nf);
+
+    if (prt == Row) {
+      dpu_set_u32(dpu, "len_cf", len_cf);
+      dpu_set_u32(dpu, "cf_from", i * len_cf);
+      dpu_set_u32(dpu, "cf_to", (i + 1) * len_cf);
+    }
 
     // Add root node to cf of all DPUs of first row and to nf of all DPUs of first col.
     uint32_t *cf = i < col_div ? frontier : 0;

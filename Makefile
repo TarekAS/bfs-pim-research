@@ -10,6 +10,7 @@ all:
 	dpu-upmem-dpurte-clang -Wall -Wextra -g -O2 -DNR_TASKLETS=$(NR_TASKLETS) -DBLOCK_SIZE=$(BLOCK_SIZE) -DBENCHMARK_CYCLES=$(BENCHMARK_CYCLES)  -DBENCHMARK_TIME=$(BENCHMARK_TIME) -O2 -o bin/bottom-up-dma bfs-dpu/dpu/bottom-up-dma.c
 	dpu-upmem-dpurte-clang -Wall -Wextra -g -O2 -DNR_TASKLETS=$(NR_TASKLETS) -DBLOCK_SIZE=$(BLOCK_SIZE) -DBENCHMARK_CYCLES=$(BENCHMARK_CYCLES)  -DBENCHMARK_TIME=$(BENCHMARK_TIME) -O2 -o bin/bottom-up-row-dma bfs-dpu/dpu/bottom-up-row-dma.c
 	dpu-upmem-dpurte-clang -Wall -Wextra -g -O2 -DNR_TASKLETS=$(NR_TASKLETS) -DBLOCK_SIZE=$(BLOCK_SIZE) -DBENCHMARK_CYCLES=$(BENCHMARK_CYCLES)  -DBENCHMARK_TIME=$(BENCHMARK_TIME) -O2 -o bin/edge-dma bfs-dpu/dpu/edge-dma.c
+	dpu-upmem-dpurte-clang -Wall -Wextra -g -O2 -DNR_TASKLETS=$(NR_TASKLETS) -DBLOCK_SIZE=$(BLOCK_SIZE) -DBENCHMARK_CYCLES=$(BENCHMARK_CYCLES)  -DBENCHMARK_TIME=$(BENCHMARK_TIME) -O2 -o bin/edge-row-dma bfs-dpu/dpu/edge-row-dma.c
 
 clean:
 	rm -f bin/bfs
@@ -18,3 +19,4 @@ clean:
 	rm -f bin/bottom-up-dma
 	rm -f bin/bottom-up-row-dma
 	rm -f bin/edge-dma
+	rm -f bin/edge-row-dma

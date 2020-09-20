@@ -99,9 +99,7 @@ logging.basicConfig(filename='bench_time.error.log', level=logging.ERROR)
 make(11, 32)
 
 # (algorithm, partitioning) pairs
-algs = [("top", "row"), ("top", "col"), ("top", "2d"),
-        ("bot", "row"), ("bot", "col"), ("bot", "2d"),
-        ("edge", "row"), ("edge", "col"), ("edge", "2d")]
+algs = [("bot", "row")]
 
 # Get datafiles from args.
 datafiles = []
@@ -131,7 +129,7 @@ f.write("datafile\talgorithm\tpartition\tsuccess\tnum_dpus\tnum_nodes\tnum_edges
 f.flush()
 
 # Run benchmarks on each datafile, for each combination of bfs variation and dpu count.
-dpu_count = [8, 16, 32, 64, 128, 256, 512]
+dpu_count = [8, 16, 32, 64, 128, 256, 384]
 for datafile, expected in datafiles:
     for alg, prt in algs:
         for num_dpus in dpu_count:
