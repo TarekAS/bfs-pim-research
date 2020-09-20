@@ -63,19 +63,19 @@ def bfs(datafile, expected_node_levels, alg, prt, num_dpus):
             run, shell=True, stdout=subprocess.PIPE, encoding="utf-8")
     except Exception:
         logging.error(f"BFS failed to run ({id_str})")
-        return False, 0, 0, 0, 0, 0, 0, 0
+        return False, 0, 0, 0, 0, 0, 0, 0, 0
 
     if process.returncode > 0:
         logging.error(f"BFS failed to complete ({id_str})")
         if os.path.exists(res):
             os.remove(res)
-        return False, 0, 0, 0, 0, 0, 0, 0
+        return False, 0, 0, 0, 0, 0, 0, 0, 0
 
     if not filecmp.cmp(res, expected_node_levels):
         logging.error(f"BFS output is incorrect ({id_str})")
         if os.path.exists(res):
             os.remove(res)
-        return False, 0, 0, 0, 0, 0, 0, 0
+        return False, 0, 0, 0, 0, 0, 0, 0, 0
 
     if os.path.exists(res):
         os.remove(res)
