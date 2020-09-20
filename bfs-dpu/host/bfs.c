@@ -626,8 +626,6 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
 
   while (true) {
 
-    PRINT_DEBUG("Level %u", level);
-
 #if BENCHMARK_TIME
     start_time(&dpu_compute_timer);
 #endif
