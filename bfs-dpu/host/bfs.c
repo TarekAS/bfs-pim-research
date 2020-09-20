@@ -53,12 +53,14 @@ static double get_elapsed_time(Timer timer) {
 
 // All timings are in seconds.
 double dpu_compute_time = 0; // Total time spent in DPU computation.
-double host_comm_time = 0;   // Total time spent by Host-DPU communication and data aggregation.
+double host_comm_time = 0;   // Total time spent by Host-DPU communication.
+double host_aggr_time = 0;   // Total time spent by Host aggregation.
 double pop_mram_time = 0;    // Time spent populating the MRAM (initial copy).
 double fetch_res_time = 0;   // Time spent retrieving the results from MRAM (final copy).
 
 Timer dpu_compute_timer;
 Timer host_comm_timer;
+Timer host_aggr_timer;
 Timer pop_mram_timer;
 Timer fetch_res_timer;
 
@@ -642,6 +644,12 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
     }
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
+#if BENCHMARK_TIME
+    stop_time(&host_comm_timer);
+    host_comm_time += get_elapsed_time(host_comm_timer);
+    start_time(&host_aggr_timer);
+#endif
+
     // Union next_frontiers and check if done.
     for (uint32_t c = 0; c < len_nf * num_dpu; ++c) {
       uint32_t nf = nf_tmp[c];
@@ -650,6 +658,11 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
         done = false;
     }
 
+#if BENCHMARK_TIME
+    stop_time(&host_aggr_timer);
+    host_aggr_time += get_elapsed_time(host_aggr_timer);
+    start_time(&host_comm_timer);
+#endif
 #if BENCHMARK_CYCLES
     print_dpu_cycles(set, dpu);
 #endif
@@ -712,6 +725,12 @@ void start_col(uint32_t len_cf, uint32_t len_nf) {
       // DPU_ASSERT(dpu_log_read(dpu, stderr));
     }
 
+#if BENCHMARK_TIME
+    stop_time(&host_comm_timer);
+    host_comm_time += get_elapsed_time(host_comm_timer);
+    start_time(&host_aggr_timer);
+#endif
+
     // Check if done.
     for (uint32_t c = 0; c < len_cf; ++c)
       if (frontier[c] != 0) {
@@ -719,6 +738,11 @@ void start_col(uint32_t len_cf, uint32_t len_nf) {
         break;
       }
 
+#if BENCHMARK_TIME
+    stop_time(&host_aggr_timer);
+    host_aggr_time += get_elapsed_time(host_aggr_timer);
+    start_time(&host_comm_timer);
+#endif
 #if BENCHMARK_CYCLES
     print_dpu_cycles(set, dpu);
 #endif
@@ -775,6 +799,12 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
     }
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
+#if BENCHMARK_TIME
+    stop_time(&host_comm_timer);
+    host_comm_time += get_elapsed_time(host_comm_timer);
+    start_time(&host_aggr_timer);
+#endif
+
     // Concatenate by column and union by row the next_frontiers of each DPU, and check if done.
     for (uint32_t c = 0; c < len_nf * num_dpu; ++c) {
       uint32_t nf = nf_tmp[c];
@@ -783,6 +813,11 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
         done = false;
     }
 
+#if BENCHMARK_TIME
+    stop_time(&host_aggr_timer);
+    host_aggr_time += get_elapsed_time(host_aggr_timer);
+    start_time(&host_comm_timer);
+#endif
 #if BENCHMARK_CYCLES
     print_dpu_cycles(set, dpu);
 #endif
@@ -1136,12 +1171,12 @@ int main(int argc, char **argv) {
   PRINT_INFO("Done");
 
 #if BENCHMARK_TIME
-  double total_alg = dpu_compute_time + host_comm_time;
+  double total_alg = dpu_compute_time + host_comm_time + host_aggr_time;
   double total_pop_fetch = pop_mram_time + fetch_res_time;
-  double total_all = dpu_compute_time + host_comm_time + pop_mram_time + fetch_res_time;
+  double total_all = total_alg + total_pop_fetch;
 
-  printf("dpu_compute_time %f\thost_comm_time %f\tpop_mram_time %f\tfetch_res_time %f\ttotal_alg %f\ttotal_pop_fetch %f\ttotal_all %f\n",
-         dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all);
+  printf("dpu_compute_time %f host_comm_time %f host_aggr_time %f pop_mram_time %f fetch_res_time %f total_alg %f total_pop_fetch %f total_all %f\n",
+         dpu_compute_time, host_comm_time, host_aggr_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all);
 #endif
 
   return 0;

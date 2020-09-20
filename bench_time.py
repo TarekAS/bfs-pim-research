@@ -7,7 +7,7 @@
     
     The expected_node_levels are used to verify the correctness of the BFS output. 
 
-    Prints timing results to bench_time_results.
+    Prints timing results to bench_results.
 """
 
 
@@ -80,20 +80,21 @@ def bfs(datafile, expected_node_levels, alg, prt, num_dpus):
     if os.path.exists(res):
         os.remove(res)
 
-    times = process.stdout.split("\t")
+    times = process.stdout.split(" ")
 
-    dpu_compute_time = float(times[0].split(" ")[1])
-    host_comm_time = float(times[1].split(" ")[1])
-    pop_mram_time = float(times[2].split(" ")[1])
-    fetch_res_time = float(times[3].split(" ")[1])
-    total_alg = float(times[4].split(" ")[1])
-    total_pop_fetch = float(times[5].split(" ")[1])
-    total_all = float(times[6].split(" ")[1])
+    dpu_compute_time = float(times[1].split(" ")[1])
+    host_comm_time = float(times[3].split(" ")[1])
+    host_aggr_time = float(times[5].split(" ")[1])
+    pop_mram_time = float(times[7].split(" ")[1])
+    fetch_res_time = float(times[9].split(" ")[1])
+    total_alg = float(times[11].split(" ")[1])
+    total_pop_fetch = float(times[13].split(" ")[1])
+    total_all = float(times[15].split(" ")[1])
 
-    return True, dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all
+    return True, dpu_compute_time, host_comm_time, host_aggr_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all
 
 
-logging.basicConfig(filename='bench_time.error.log', level=logging.ERROR)
+logging.basicConfig(filename='bench.error.log', level=logging.ERROR)
 
 # Compile code with 11 Tasklets and 32 bytes block size.
 make(11, 32)
@@ -119,15 +120,15 @@ else:
         datafiles.append((f"data/{f}", f"results/expected/{f}"))
 
 # Create unique output file.
-outfile = "bench_time_results"
+outfile = "bench_results"
 counter = 2
 while os.path.isfile(outfile):
-    outfile = f"bench_time_results_{counter}"
+    outfile = f"bench_results_{counter}"
     counter += 1
 f = open(outfile, "w+")
 
 # Write header.
-f.write("datafile\talgorithm\tpartition\tsuccess\tnum_dpus\tnum_nodes\tnum_edges\tmax_degree_node\tmax_degree\tdpu_compute_time\thost_comm_time\tpop_mram_time\tfetch_res_time\ttotal_alg\ttotal_pop_fetch\ttotal_all\n")
+f.write("success datafile alg prt num_dpus dpu_compute_time host_comm_time host_aggr_time pop_mram_time fetch_res_time total_alg total_pop_fetch total_all\n")
 f.flush()
 
 # Run benchmarks on each datafile, for each combination of bfs variation and dpu count.
@@ -136,11 +137,10 @@ for datafile, expected in datafiles:
     for alg, prt in algs:
         for num_dpus in dpu_count:
 
-            success, dpu_compute_time, host_comm_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all = bfs(
+            success, dpu_compute_time, host_comm_time, host_aggr_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all = bfs(
                 datafile, expected, alg, prt, num_dpus)
-            num_nodes, num_edges, max_degree_node, max_degree = get_metadata(
-                datafile)
+            # num_nodes, num_edges, max_degree_node, max_degree = get_metadata(datafile)
 
-            f.write(f"{os.path.basename(datafile)}\t{alg}\t{prt}\t{success}\t{num_dpus}\t{num_nodes}\t{num_edges}\t{max_degree_node}\t{max_degree}\t{dpu_compute_time}\t{host_comm_time}\t{pop_mram_time}\t{fetch_res_time}\t{total_alg}\t{total_pop_fetch}\t{total_all}\n")
+            f.write(f"{success} {os.path.basename(datafile)} {alg} {prt} {num_dpus} {dpu_compute_time} {host_comm_time} {host_aggr_time} {pop_mram_time} {fetch_res_time} {total_alg} {total_pop_fetch} {total_all}\n")
             f.flush()
 f.close()
