@@ -58,6 +58,9 @@ int main() {
     (void)perfcounter_config(COUNT_CYCLES, true);
 #endif
 
+  if (me() == 0)
+    nf_updated = 0;
+
   uint32_t *f = F_CACHES[me()];
   uint32_t *vis = VIS_CACHES[me()];
   uint32_t *svtx = NODES_CACHES[me()];
