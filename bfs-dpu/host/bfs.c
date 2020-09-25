@@ -107,6 +107,7 @@ uint32_t num_dpu = 8;
 
 struct dpu_symbol_t mram_heap_sym;
 struct dpu_symbol_t level_sym;
+struct dpu_symbol_t nf_updated_sym;
 
 mram_addr_t cf_addr;
 mram_addr_t nf_addr;
@@ -615,9 +616,11 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
 
   uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
+  uint32_t size_nf_tmp = size_nf * num_dpu;
 
   uint32_t *frontier = calloc(size_nf, 1);
-  uint32_t *nf_tmp = calloc(size_nf * num_dpu, 1);
+  uint32_t *nf_tmp = calloc(size_nf_tmp, 1);
+  uint32_t *nf_updated = calloc(num_dpu, sizeof(uint32_t));
   uint32_t level = 0;
   bool done = true;
 
@@ -636,11 +639,19 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
     start_time(&host_comm_timer);
 #endif
 
-    // Fetch next_frontiers.
     uint32_t i = 0;
+    // Check which DPUs updated their next frontiers.
     DPU_FOREACH(set, dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_tmp[i * len_nf]));
-      // DPU_ASSERT(dpu_log_read(dpu, stderr));
+      DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_updated[i]));
+    }
+    DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, nf_updated_sym, 0, sizeof(uint32_t), DPU_XFER_DEFAULT));
+
+    // Fetch next_frontiers.
+    DPU_FOREACH(set, dpu, i) {
+      if (nf_updated[i] == 1) {
+        DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_tmp[i * len_nf]));
+        done = false;
+      }
     }
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
@@ -654,13 +665,6 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
     for (uint32_t d = 0; d < num_dpu; ++d)
       for (uint32_t c = 0; c < len_nf; ++c)
         frontier[c] |= nf_tmp[d * len_nf + c];
-
-    // Check if done.
-    for (uint32_t c = 0; c < len_nf; ++c)
-      if (frontier[c] != 0) {
-        done = false;
-        break;
-      }
 
 #if BENCHMARK_TIME
     stop_time(&host_aggr_timer);
@@ -687,6 +691,7 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
 
     // Clear frontier.
     memset(frontier, 0, size_nf);
+    memset(nf_tmp, 0, size_nf_tmp);
 
 #if BENCHMARK_TIME
     stop_time(&host_comm_timer);
@@ -694,6 +699,7 @@ void start_row(uint32_t len_cf, uint32_t len_nf) {
 #endif
   }
 
+  free(nf_updated);
   free(nf_tmp);
   free(frontier);
 }
@@ -702,6 +708,7 @@ void start_col(uint32_t len_cf, uint32_t len_nf) {
 
   uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
+  uint32_t *nf_updated = calloc(num_dpu, sizeof(uint32_t));
   uint32_t *frontier = calloc(size_cf, 1);
   uint32_t level = 0;
   bool done = true;
@@ -721,32 +728,22 @@ void start_col(uint32_t len_cf, uint32_t len_nf) {
     start_time(&host_comm_timer);
 #endif
 
-    // Concatenate all next_frontiers.
     uint32_t i = 0;
+    // Check which DPUs updated their next frontiers.
     DPU_FOREACH(set, dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(dpu, &frontier[i * len_nf]));
-      DPU_ASSERT(dpu_push_xfer_symbol(dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT)); // Note: trying to do transfer at the end leads to a bug for some reason.
-      // DPU_ASSERT(dpu_log_read(dpu, stderr));
+      DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_updated[i]));
+    }
+    DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, nf_updated_sym, 0, sizeof(uint32_t), DPU_XFER_DEFAULT));
+
+    // Concatenate all next_frontiers.
+    DPU_FOREACH(set, dpu, i) {
+      if (nf_updated[i] == 1) {
+        done = false;
+        DPU_ASSERT(dpu_prepare_xfer(dpu, &frontier[i * len_nf]));
+        DPU_ASSERT(dpu_push_xfer_symbol(dpu, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
+      }
     }
 
-#if BENCHMARK_TIME
-    stop_time(&host_comm_timer);
-    host_comm_time += get_elapsed_time(host_comm_timer);
-    start_time(&host_aggr_timer);
-#endif
-
-    // Check if done.
-    for (uint32_t c = 0; c < len_cf; ++c)
-      if (frontier[c] != 0) {
-        done = false;
-        break;
-      }
-
-#if BENCHMARK_TIME
-    stop_time(&host_aggr_timer);
-    host_aggr_time += get_elapsed_time(host_aggr_timer);
-    start_time(&host_comm_timer);
-#endif
 #if BENCHMARK_CYCLES
     print_dpu_cycles(set, dpu);
 #endif
@@ -761,12 +758,14 @@ void start_col(uint32_t len_cf, uint32_t len_nf) {
     DPU_ASSERT(dpu_prepare_xfer(set, frontier));
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_TO_DPU, mram_heap_sym, cf_addr, size_cf, DPU_XFER_DEFAULT));
 
+    memset(frontier, 0, size_cf);
 #if BENCHMARK_TIME
     stop_time(&host_comm_timer);
     host_comm_time += get_elapsed_time(host_comm_timer);
 #endif
   }
 
+  free(nf_updated);
   free(frontier);
 }
 
@@ -775,8 +774,11 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
   uint32_t size_nf = ROUND_UP_TO_MULTIPLE(len_nf * sizeof(uint32_t), 8);
   uint32_t size_cf = ROUND_UP_TO_MULTIPLE(len_cf * sizeof(uint32_t), 8);
   uint32_t size_f = ROUND_UP_TO_MULTIPLE(len_frontier * sizeof(uint32_t), 8);
+  uint32_t size_nf_tmp = size_nf * num_dpu;
+
   uint32_t *frontier = calloc(size_f, 1);
-  uint32_t *nf_tmp = calloc(size_nf * num_dpu, 1);
+  uint32_t *nf_tmp = calloc(size_nf_tmp, 1);
+  uint32_t *nf_updated = calloc(num_dpu, sizeof(uint32_t));
   uint32_t level = 0;
   bool done = true;
 
@@ -797,9 +799,17 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
 
     // Fetch next_frontiers.
     uint32_t i = 0;
+    // Check which DPUs updated their next frontiers.
     DPU_FOREACH(set, dpu, i) {
-      DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_tmp[i * len_nf]));
-      // DPU_ASSERT(dpu_log_read(dpu, stderr));
+      DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_updated[i]));
+    }
+    DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, nf_updated_sym, 0, sizeof(uint32_t), DPU_XFER_DEFAULT));
+
+    DPU_FOREACH(set, dpu, i) {
+      if (nf_updated[i] == 1) {
+        done = false;
+        DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_tmp[i * len_nf]));
+      }
     }
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
@@ -812,13 +822,6 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
     // Concatenate by column and union by row the next_frontiers of each DPU, and check if done.
     for (uint32_t c = 0; c < len_nf * num_dpu; ++c)
       frontier[c % len_frontier] |= nf_tmp[c];
-
-    // Check if done.
-    for (uint32_t c = 0; c < len_frontier; ++c)
-      if (frontier[c] != 0) {
-        done = false;
-        break;
-      }
 
 #if BENCHMARK_TIME
     stop_time(&host_aggr_timer);
@@ -847,6 +850,7 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
 
     // Clear frontier.
     memset(frontier, 0, size_f);
+    memset(nf_tmp, 0, size_nf_tmp);
 
 #if BENCHMARK_TIME
     stop_time(&host_comm_timer);
@@ -854,6 +858,7 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
 #endif
   }
 
+  free(nf_updated);
   free(nf_tmp);
   free(frontier);
 }
@@ -1143,6 +1148,7 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
 void cache_symbols(struct dpu_program_t *program) {
   DPU_ASSERT(dpu_get_symbol(program, "__sys_used_mram_end", &mram_heap_sym));
   DPU_ASSERT(dpu_get_symbol(program, "level", &level_sym));
+  DPU_ASSERT(dpu_get_symbol(program, "nf_updated", &nf_updated_sym));
 }
 
 int main(int argc, char **argv) {

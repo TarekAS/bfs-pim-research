@@ -32,6 +32,7 @@ __host __mram_ptr uint32_t *edges;     // DPU's share of edges.
 __host uint32_t level;                     // Current level of the BFS.
 __host uint32_t len_nf;                    // Length of next_frontier.
 __host uint32_t len_cf;                    // Length of curr_frontier.
+__host uint32_t nf_updated;                // DPU sets this to 1 if nf has been update in this level.
 __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
@@ -55,6 +56,8 @@ int main() {
   if (me() == 0)
     (void)perfcounter_config(COUNT_CYCLES, true);
 #endif
+  if (me() == 0)
+    nf_updated = 0;
 
   uint32_t *f = F_CACHES[me()];
   uint32_t *vis = VIS_CACHES[me()];
@@ -118,6 +121,7 @@ int main() {
               if (!(visited[neighbor / 32] & offset)) {
                 mutex_lock(nf_mutex);
                 next_frontier[neighbor / 32] |= offset;
+                nf_updated = 1;
                 mutex_unlock(nf_mutex);
               }
             }

@@ -32,6 +32,7 @@ __host __mram_ptr uint32_t *neighbors; // DPU's share of neighbor idxs.
 // BFS data.
 __host uint32_t level;                     // Current level of the BFS.
 __host uint32_t len_nf;                    // Length of next_frontier.
+__host uint32_t nf_updated;                // DPU sets this to 1 if nf has been update in this level.
 __host __mram_ptr uint32_t *visited;       // Nodes that are already visited.
 __host __mram_ptr uint32_t *curr_frontier; // Nodes that are in the current frontier.
 __host __mram_ptr uint32_t *next_frontier; // Nodes that are in the next frontier.
@@ -102,6 +103,7 @@ int main() {
         if (!(visited[neighbor / 32] & offset)) {
           mutex_lock(nf_mutex);
           next_frontier[neighbor / 32] |= offset;
+          nf_updated = 1;
           mutex_unlock(nf_mutex);
         }
       }
