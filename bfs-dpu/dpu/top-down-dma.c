@@ -68,7 +68,7 @@ int main() {
   for (uint32_t i = me() * BLOCK_INTS; i < len_nf; i += BLOCK_INTS * NR_TASKLETS) {
     mram_read(&visited[i], vis, BLOCK_SIZE);
     mram_read(&next_frontier[i], f, BLOCK_SIZE);
-    for (uint32_t j = 0; j < BLOCK_INTS && i + j < len_nf; ++j) {
+    for (uint32_t j = 0; j < BLOCK_INTS; ++j) {
       uint32_t nf = f[j];
       if (nf == 0)
         continue;
@@ -91,12 +91,13 @@ int main() {
       if (cf == 0)
         continue;
 
-      mram_read(&node_levels[(i + j) * 32], nl, 32 * sizeof(uint32_t));
+      uint32_t base_idx = (i + j) * 32;
+      mram_read(&node_levels[base_idx], nl, 32 * sizeof(uint32_t));
 
       // For each set node in the curr_frontier.
       for (uint32_t b = 0; b < 32; ++b) {
         if (cf & 1 << b % 32) {
-          uint32_t node = (i + j) * 32 + b;
+          uint32_t node = base_idx + b;
           nl[b] = level; // Update node levels.
 
           // Get node_ptrs of this node.
@@ -116,11 +117,12 @@ int main() {
 
             for (; k < BLOCK_INTS && n + k < to; ++k) {
               uint32_t neighbor = edg[k];
+              uint32_t nidx = neighbor / 32;
               uint32_t offset = 1 << neighbor % 32;
 
-              if (!(visited[neighbor / 32] & offset)) {
+              if (!(visited[nidx] & offset)) {
                 mutex_lock(nf_mutex);
-                next_frontier[neighbor / 32] |= offset;
+                next_frontier[nidx] |= offset;
                 nf_updated = 1;
                 mutex_unlock(nf_mutex);
               }
@@ -128,7 +130,7 @@ int main() {
           }
         }
       }
-      mram_write(nl, &node_levels[(i + j) * 32], 32 * sizeof(uint32_t));
+      mram_write(nl, &node_levels[base_idx], 32 * sizeof(uint32_t));
     }
   }
 
