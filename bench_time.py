@@ -71,15 +71,6 @@ def bfs(datafile, expected_node_levels, alg, prt, num_dpus):
             os.remove(res)
         return False, 0, 0, 0, 0, 0, 0, 0, 0
 
-    if not filecmp.cmp(res, expected_node_levels):
-        logging.error(f"BFS output is incorrect ({id_str})")
-        if os.path.exists(res):
-            os.remove(res)
-        return False, 0, 0, 0, 0, 0, 0, 0, 0
-
-    if os.path.exists(res):
-        os.remove(res)
-
     times = process.stdout.split(" ")
 
     dpu_compute_time = float(times[1])
@@ -91,6 +82,15 @@ def bfs(datafile, expected_node_levels, alg, prt, num_dpus):
     total_pop_fetch = float(times[13])
     total_all = float(times[15])
 
+    if not filecmp.cmp(res, expected_node_levels):
+        logging.error(f"BFS output is incorrect ({id_str})")
+        if os.path.exists(res):
+            os.remove(res)
+        return False, 0, 0, 0, 0, 0, 0, 0, 0
+
+    if os.path.exists(res):
+        os.remove(res)
+
     return True, dpu_compute_time, host_comm_time, host_aggr_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all
 
 
@@ -100,9 +100,7 @@ logging.basicConfig(filename='bench.error.log', level=logging.ERROR)
 make(11, 32)
 
 # (algorithm, partitioning) pairs
-algs = [("top", "row"), ("top", "col"), ("top", "2d"),
-        ("bot", "row"), ("bot", "col"), ("bot", "2d"),
-        ("edge", "row"), ("edge", "col"), ("edge", "2d")]
+algs = [("top", "2d")]
 
 # Get datafiles from args.
 datafiles = []
@@ -132,7 +130,7 @@ f.write("success datafile alg prt num_dpus dpu_compute_time host_comm_time host_
 f.flush()
 
 # Run benchmarks on each datafile, for each combination of bfs variation and dpu count.
-dpu_count = [8, 16, 32, 64, 128, 256, 512]
+dpu_count = [8, 16, 32, 64, 128, 256]
 for datafile, expected in datafiles:
     for alg, prt in algs:
         for num_dpus in dpu_count:
