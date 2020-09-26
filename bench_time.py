@@ -86,7 +86,7 @@ def bfs(datafile, expected_node_levels, alg, prt, num_dpus):
         logging.error(f"BFS output is incorrect ({id_str})")
         if os.path.exists(res):
             os.remove(res)
-        return False, 0, 0, 0, 0, 0, 0, 0, 0
+        return False, dpu_compute_time, host_comm_time, host_aggr_time, pop_mram_time, fetch_res_time, total_alg, total_pop_fetch, total_all
 
     if os.path.exists(res):
         os.remove(res)
