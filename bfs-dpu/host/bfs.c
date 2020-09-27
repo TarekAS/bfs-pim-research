@@ -780,7 +780,6 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
   uint32_t *nf_tmp = calloc(size_nf_tmp, 1);
   uint32_t *nf_updated = calloc(num_dpu, sizeof(uint32_t));
   uint32_t level = 0;
-  bool done = true;
 
   while (true) {
 
@@ -797,20 +796,23 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
     start_time(&host_comm_timer);
 #endif
 
-    // Fetch next_frontiers.
-    uint32_t i = 0;
     // Check which DPUs updated their next frontiers.
+    uint32_t i = 0;
     DPU_FOREACH(set, dpu, i) {
       DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_updated[i]));
     }
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, nf_updated_sym, 0, sizeof(uint32_t), DPU_XFER_DEFAULT));
 
+    // Fetch next_frontiers and count updated nf.
+    uint32_t num_updated_dpus = 0;
     DPU_FOREACH(set, dpu, i) {
       if (nf_updated[i] == 1) {
-        done = false;
+        num_updated_dpus++;
         DPU_ASSERT(dpu_prepare_xfer(dpu, &nf_tmp[i * len_nf]));
       }
     }
+    if (num_updated_dpus == 0)
+      break;
     DPU_ASSERT(dpu_push_xfer_symbol(set, DPU_XFER_FROM_DPU, mram_heap_sym, nf_addr, size_nf, DPU_XFER_DEFAULT));
 
 #if BENCHMARK_TIME
@@ -820,9 +822,11 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
 #endif
 
     // Concatenate by column and union by row the next_frontiers of each DPU, and check if done.
-    for (uint32_t c = 0; c < len_nf * num_dpu; ++c)
-      frontier[c % len_frontier] |= nf_tmp[c];
-
+    DPU_FOREACH(set, dpu, i) {
+      if (nf_updated[i] == true)
+        for (uint32_t c = 0; c < len_nf; ++c)
+          frontier[i * len_nf % len_frontier + c] |= nf_tmp[i * len_nf + c];
+    }
 #if BENCHMARK_TIME
     stop_time(&host_aggr_timer);
     host_aggr_time += get_elapsed_time(host_aggr_timer);
@@ -831,10 +835,6 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
 #if BENCHMARK_CYCLES
     print_dpu_cycles(set, dpu);
 #endif
-
-    if (done)
-      break;
-    done = true;
 
     // Update level, next_frontier and current_frontier.
     ++level;
@@ -850,7 +850,6 @@ void start_2d(uint32_t len_frontier, uint32_t len_cf, uint32_t len_nf, uint32_t 
 
     // Clear frontier.
     memset(frontier, 0, size_f);
-    memset(nf_tmp, 0, size_nf_tmp);
 
 #if BENCHMARK_TIME
     stop_time(&host_comm_timer);
