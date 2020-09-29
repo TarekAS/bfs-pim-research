@@ -100,7 +100,9 @@ logging.basicConfig(filename='bench.error.log', level=logging.ERROR)
 make(11, 32)
 
 # (algorithm, partitioning) pairs
-algs = [("top", "2d")]
+algs = [("top", "row"), ("top", "col"), ("top", "2d"),
+        ("bot", "row"), ("bot", "col"), ("bot", "2d"),
+        ("edge", "row"), ("edge", "col"), ("edge", "2d")]
 
 # Get datafiles from args.
 datafiles = []
