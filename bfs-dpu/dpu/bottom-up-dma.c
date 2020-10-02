@@ -114,10 +114,11 @@ int main() {
                 if (ncf & (1 << (neighbor % 32))) {
                   f[j] |= offset;
                   nf_updated = 1;
-                  break;
+                  goto outer;
                 }
               }
             }
+          outer:;
           }
     }
     mram_write(vis, &visited[i], BLOCK_SIZE);
