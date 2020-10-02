@@ -132,7 +132,7 @@ f.write("success datafile alg prt num_dpus dpu_compute_time host_comm_time host_
 f.flush()
 
 # Run benchmarks on each datafile, for each combination of bfs variation and dpu count.
-dpu_count = [8, 16, 32, 64, 128, 256]
+dpu_count = [8, 16, 32, 64, 128, 256, 512]
 for datafile, expected in datafiles:
     for alg, prt in algs:
         for num_dpus in dpu_count:
