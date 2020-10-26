@@ -1,7 +1,7 @@
 
 # What is this?
 
-Project to benchmark DPU-accelerated Breadth-First Search, in comparison with classic CPU and GPU based implementations. Part of my MSc Thesis on Processing-In-Memory of Breadth-First Search.
+Project to benchmark DPU-accelerated Breadth-First Search. Part of my MSc Thesis on Processing-In-Memory of Breadth-First Search.
 
 **Note:** Tested with `UPMEM DPU SDK 2020.3.x`.
 
