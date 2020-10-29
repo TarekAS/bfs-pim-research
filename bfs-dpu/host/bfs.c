@@ -933,6 +933,8 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
     // Cache some MRAM addresses (address must be the same for all DPUs).
     DPU_ASSERT(dpu_copy_from(dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
+
+    // PRINT_DEBUG("DPU %d populated with %ld MB", i, (lnf + lnf + lcf + lnl + num_nodes + 1 + csr[i].num_edges) * sizeof(uint32_t) / 1048576);
   }
 
 #if BENCHMARK_TIME
@@ -1028,6 +1030,8 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
     // Cache some MRAM addresses (address must be the same for all DPUs).
     DPU_ASSERT(dpu_copy_from(dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
+
+    // PRINT_DEBUG("DPU %d populated with %ld MB", i, (lnf + lnf + lcf + lnl + num_neighbors + 1 + csc[i].num_edges) * sizeof(uint32_t) / 1048576);
   }
 
 #if BENCHMARK_TIME
@@ -1118,6 +1122,8 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
     // Cache some MRAM addresses (address must be the same for all DPUs).
     DPU_ASSERT(dpu_copy_from(dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
+
+    // PRINT_DEBUG("DPU %d populated with %ld MB", i, (lnf + lnf + lcf + lnl + num_edges + num_edges) * sizeof(uint32_t) / 1048576);
   }
 
 #if BENCHMARK_TIME
