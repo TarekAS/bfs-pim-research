@@ -43,8 +43,6 @@ __dma_aligned uint32_t VIS_CACHES[NR_TASKLETS][BLOCK_INTS];
 __dma_aligned uint32_t EDGE_CACHES[NR_TASKLETS][BLOCK_INTS];
 __dma_aligned uint32_t NL_CACHES[NR_TASKLETS][32];
 
-BARRIER_INIT(nf_barrier, NR_TASKLETS);
-
 #if BENCHMARK_CYCLES
 __host uint64_t cycles[NR_TASKLETS];
 #endif
