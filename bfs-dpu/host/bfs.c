@@ -899,8 +899,6 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
-  size_t total_memory = 0;
-  printf("DPUs: %d\n", num_dpu);
 
 #if BENCHMARK_TIME
   start_time(&pop_mram_timer);
@@ -936,11 +934,8 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
     DPU_ASSERT(dpu_copy_from(dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
 
-    size_t mem_used = (lnf + lnf + lcf + lnl + num_nodes + 1 + csr[i].num_edges) * sizeof(uint32_t) / 1048576;
-    total_memory += mem_used;
-    printf("%d: %ld - ", i, mem_used);
+    // PRINT_DEBUG("DPU %d populated with %ld MB", i, (lnf + lnf + lcf + lnl + num_nodes + 1 + csr[i].num_edges) * sizeof(uint32_t) / 1048576);
   }
-  printf("\nTotal: %ld MB\n", total_memory);
 
 #if BENCHMARK_TIME
   stop_time(&pop_mram_timer);
@@ -951,8 +946,6 @@ void bfs_top_down(struct COO *coo, int num_dpu, enum Partition prt) {
   free(frontier);
   for (int i = 0; i < num_dpu; ++i)
     free_csr(csr[i]);
-
-  exit(0);
 
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
@@ -1004,8 +997,6 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
-  size_t total_memory = 0;
-  printf("DPUs: %d\n", num_dpu);
 
 #if BENCHMARK_TIME
   start_time(&pop_mram_timer);
@@ -1040,11 +1031,8 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
     DPU_ASSERT(dpu_copy_from(dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
 
-    size_t mem_used = (lnf + lnf + lcf + lnl + num_neighbors + 1 + csc[i].num_edges) * sizeof(uint32_t) / 1048576;
-    total_memory += mem_used;
-    printf("%d: %ld - ", i, mem_used);
+    // PRINT_DEBUG("DPU %d populated with %ld MB", i, (lnf + lnf + lcf + lnl + num_neighbors + 1 + csc[i].num_edges) * sizeof(uint32_t) / 1048576);
   }
-  printf("\nTotal: %ld MB\n", total_memory);
 
 #if BENCHMARK_TIME
   stop_time(&pop_mram_timer);
@@ -1055,8 +1043,6 @@ void bfs_bottom_up(struct COO *coo, int num_dpu, enum Partition prt) {
   free(frontier);
   for (int i = 0; i < num_dpu; ++i)
     free_csc(csc[i]);
-
-  exit(0);
 
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
@@ -1101,8 +1087,6 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
 
   // Copy data to MRAM.
   PRINT_INFO("Populating MRAM.");
-  size_t total_memory = 0;
-  printf("DPUs: %d\n", num_dpu);
 
 #if BENCHMARK_TIME
   start_time(&pop_mram_timer);
@@ -1139,11 +1123,8 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
     DPU_ASSERT(dpu_copy_from(dpu, "next_frontier", 0, &nf_addr, sizeof(mram_addr_t)));
     DPU_ASSERT(dpu_copy_from(dpu, "curr_frontier", 0, &cf_addr, sizeof(mram_addr_t)));
 
-    size_t mem_used = (lnf + lnf + lcf + lnl + num_edges + num_edges) * sizeof(uint32_t) / 1048576;
-    total_memory += mem_used;
-    printf("%d: %ld - ", i, mem_used);
+    // PRINT_DEBUG("DPU %d populated with %ld MB", i, (lnf + lnf + lcf + lnl + num_edges + num_edges) * sizeof(uint32_t) / 1048576);
   }
-  printf("\nTotal: %ld MB\n", total_memory);
 
 #if BENCHMARK_TIME
   stop_time(&pop_mram_timer);
@@ -1155,7 +1136,6 @@ void bfs_edge(struct COO *coo, int num_dpu, enum Partition prt) {
   for (int i = 0; i < num_dpu; ++i)
     free_coo(coo[i]);
 
-  exit(0);
   // Start BFS algorithm.
   PRINT_INFO("Starting BFS algorithm.");
   if (prt == Row)
