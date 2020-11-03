@@ -18,7 +18,7 @@ with open(datafile) as f:
         nodes[src_node].append(dst_node)
         nodes[dst_node].append(src_node)
 
-with open(datafile) as f:
+with open(datafile, "w+") as f:
     for node, neighbors in sorted(nodes.items()):
         for neighbor in neighbors:
             f.write(f"{node}\t{neighbor}\n")
