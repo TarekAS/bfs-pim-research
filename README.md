@@ -1,7 +1,7 @@
 
 # What is this?
 
-Project to benchmark DPU-accelerated Breadth-First Search.
+Project to benchmark DPU-accelerated Breadth-First Search. DPUs are tiny in-memory ARM processors. 1 DPU is built into the RAM for every 64MBs, for a total of 2048 DPUs on a 128GB server. DPUs are used to accelerate specific memory-bound workloads up to x100. This project uses BFS as a demonstration of this capability.
 
 **Note:** Tested with `UPMEM DPU SDK 2020.3.x`.
 
